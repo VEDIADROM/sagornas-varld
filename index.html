@@ -145,7 +145,7 @@ const S = {
   transT: 0, particles: [], trailT: 0, winConfT: 0,
   ribbon: [], landT: 0, shakeT: 0, birdPopT: -9, starPopT: -9, heartPopT: -9,
   takeoffT: 0,
-  bubbles: [], bubbleT: 3, popChain: 0, popT: -9, hats: 0,
+  bubbles: [], bubbleT: 3, popChain: 0, popT: -9, hats: [],
 };
 /* manfärger — "måla din enhörning" */
 const MANES = [
@@ -209,14 +209,20 @@ function makeZombies(){
   const n = lvl === 1 ? 10 : lvl === 2 ? 12 : Math.min(16, 13 + lvl - 3 + 1);
   S.courseLen = 10;
   const a = 1.6, b = S.courseLen - 1.0;
+  const pool = lvl === 1 ? ['norm','bebis','somn','norm','disco','bebis']
+                         : ['norm','lang','bebis','disco','somn','lang'];
+  const koff = Math.floor(rnd() * pool.length);
   for (let i = 0; i < n; i++){
     const base = a + (b - a) * i / (n - 1) + (rnd() - 0.5) * 0.18;
+    const kn = pool[(i + koff) % pool.length];
+    const K = ZK[kn];
     S.zombies.push({
-      wx: base, seed: rnd() * 10,
-      pace: lvl >= 2, range: lvl >= 3 ? 0.055 : 0.045,
-      spd: lvl >= 3 ? 1.9 : 1.2,
+      wx: base, seed: rnd() * 10, kind: kn, k: K,
+      pace: lvl >= 2 && kn !== 'somn',                                  // sovande står alltid still
+      range: (lvl >= 3 ? 0.055 : 0.045) * (kn === 'bebis' ? 0.6 : 1),   // bebisar tultar kort & snabbt
+      spd: (lvl >= 3 ? 1.9 : 1.2) * (kn === 'bebis' ? 1.8 : 1),
       hit: false, hitT: 0, tipDir: rnd() < 0.5 ? -1 : 1,
-      say: ['Hoppsan!','Oj!','Hihi!'][i % 3],
+      say: K.say,
     });
   }
 }
@@ -239,7 +245,7 @@ function go(phase){
   if (phase === 'toGround'){ sndWhoosh(); }
   if (phase === 'ground'){
     makeZombies(); S.p = 0; S.vy = 0; S.grounded = true; S.jumps = 0;
-    S.hearts = 10; S.invulnT = 0; S.wings = 0; S.flying = false; S.hats = 0;
+    S.hearts = 10; S.invulnT = 0; S.wings = 0; S.flying = false; S.hats = [];
     S.uy = standY(); S.banner = 'Hoppa!'; S.bannerT = 1.6;
     makeClouds();
   }
@@ -427,16 +433,15 @@ function drawUnicorn(x, y, u, o){
   ctx.beginPath(); ctx.moveTo(-0.06*u, -0.15*u); ctx.lineTo(0.07*u, -0.22*u);
   ctx.moveTo(-0.04*u, -0.34*u); ctx.lineTo(0.05*u, -0.4*u); ctx.stroke();
   ctx.restore();
-  // hatt-torn (insamlade zombiehattar)
-  if (o.hats){
-    for (let i = 0; i < Math.min(o.hats, 8); i++){
+  // hatt-torn (insamlade zombiehattar, varje sort behåller sin form)
+  if (o.hats && o.hats.length){
+    o.hats.slice(0, 8).forEach((style, i) => {
       ctx.save();
-      ctx.translate(0.85*u + Math.sin(S.time*2.5 + i) * 0.03*u*i, (-1.58 - i*0.26)*u);
+      ctx.translate(0.85*u + Math.sin(S.time*2.5 + i) * 0.03*u*i, (-1.62 - i*0.3)*u);
       ctx.rotate(Math.sin(S.time*2 + i) * 0.07);
-      ctx.fillStyle = '#6d4c41'; ell(0, 0.07*u, 0.34*u, 0.08*u); rr(-0.2*u, -0.22*u, 0.4*u, 0.28*u, 0.07*u);
-      ctx.fillStyle = '#ffca28'; rr(-0.2*u, -0.03*u, 0.4*u, 0.07*u, 0.02*u);
+      drawHatShape(style, u * 0.55);
       ctx.restore();
-    }
+    });
   }
   // krona
   if (o.crown){
@@ -597,53 +602,117 @@ function drawFriend(f){
     drawUnicorn(x, gy - unit()*0.62 - hop, unit()*0.5, { face: x > S.ux ? -1 : 1, happy: f.cheer > 0 });
   }
 }
+/* fem sorters snälla zombisar */
+const ZK = {
+  norm:  { body:'#8fd08f', head:'#9ad89a', belly:'#b5e3a8', leg:'#79b96d', mouth:'#4c7a44', scale:1,    tall:1,    hat:'bowler', say:'Hoppsan!' },
+  lang:  { body:'#80cbc4', head:'#93d6cf', belly:'#b2e6e0', leg:'#66b2a8', mouth:'#3e7d76', scale:0.95, tall:1.45, hat:'topp',   say:'Oj!' },
+  bebis: { body:'#aed581', head:'#c2e59a', belly:'#dcedc8', leg:'#94c165', mouth:'#6a8f3f', scale:0.62, tall:1,    hat:'party',  say:'Hihi!' },
+  somn:  { body:'#b39ddb', head:'#c5b3e3', belly:'#d9cdee', leg:'#9c86c9', mouth:'#5e35b1', scale:1.05, tall:1,    hat:'natt',   say:'Va?!',  sleepy:true },
+  disco: { body:'#ffb74d', head:'#ffc97a', belly:'#ffe0b2', leg:'#f09a2f', mouth:'#b26a00', scale:0.95, tall:1,    hat:'disco',  say:'Wiii!', dance:true },
+};
+function drawHatShape(style, s){
+  // ritas med basen kring y=0, centrerad i x
+  if (style === 'topp'){
+    ctx.fillStyle = '#546e7a'; ell(0, 0.08*s, 0.52*s, 0.11*s); rr(-0.27*s, -0.72*s, 0.54*s, 0.75*s, 0.05*s);
+    ctx.fillStyle = '#ef5350'; rr(-0.27*s, -0.18*s, 0.54*s, 0.13*s, 0.03*s);
+  } else if (style === 'party' || style === 'disco'){
+    ctx.fillStyle = style === 'party' ? '#42a5f5' : '#ff5c9d';
+    ctx.beginPath(); ctx.moveTo(-0.3*s, 0.08*s); ctx.lineTo(0.3*s, 0.08*s); ctx.lineTo(0, -0.62*s); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; circle(-0.08*s, -0.12*s, 0.05*s); circle(0.1*s, -0.28*s, 0.05*s);
+    ctx.fillStyle = style === 'party' ? '#ffd54f' : '#ffe45c'; circle(0, -0.66*s, 0.1*s);
+  } else if (style === 'natt'){
+    ctx.fillStyle = '#5c6bc0';
+    ctx.beginPath(); ctx.moveTo(-0.32*s, 0.02*s);
+    ctx.quadraticCurveTo(-0.05*s, -0.85*s, 0.55*s, -0.38*s);
+    ctx.lineTo(0.3*s, 0.02*s); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#c5cae9'; rr(-0.36*s, -0.02*s, 0.7*s, 0.13*s, 0.06*s);
+    ctx.fillStyle = '#fff'; circle(0.57*s, -0.4*s, 0.1*s);
+  } else {  // bowler
+    ctx.fillStyle = '#6d4c41'; ell(0, 0.08*s, 0.5*s, 0.12*s); rr(-0.3*s, -0.34*s, 0.6*s, 0.42*s, 0.1*s);
+    ctx.fillStyle = '#ffca28'; rr(-0.3*s, -0.04*s, 0.6*s, 0.1*s, 0.03*s);
+  }
+}
 function drawZombie(z, sx, u){
-  const zu = u * 0.85, gy = groundY();
+  const K = z.k || ZK.norm;
+  const zu = u * 0.85 * K.scale, gy = groundY(), th = K.tall || 1;
   const t = z.hit ? S.time - z.hitT : 0;
-  ctx.save(); ctx.translate(sx, gy - zu * 1.1);
   const bt = S.time - (z.boingT || -9);
+  const awake = z.hit || bt < 2.5;                       // sömnig vaknar en stund efter studs
+  const cy = (1.1 - 0.88 * th) * zu;                     // kroppens mitt (fötterna fasta)
+  const hy = (1.1 - 1.76 * th) * zu - 0.09 * zu;         // huvudets mitt
+  const hr2 = 0.55 * zu * (K.scale < 0.8 ? 1.12 : 1);    // bebisar har stort huvud
+  ctx.save(); ctx.translate(sx, gy - zu * 1.1);
   if (bt < 0.35){ const k = 1 - bt/0.35; ctx.scale(1 + 0.25*k, 1 - 0.3*k); ctx.translate(0, zu*0.3*k); }  // glad studsmatta-squash
   if (z.hit) ctx.rotate(z.tipDir * clamp(t * 2.2, 0, 1) * 1.15);
-  else ctx.rotate(Math.sin(S.time * 3 + z.seed) * 0.06);
-  ctx.fillStyle = '#79b96d';
+  else if (K.dance) ctx.rotate(Math.sin(S.time * 5 + z.seed) * 0.15);
+  else if (K.sleepy && !awake) ctx.rotate(Math.sin(S.time * 1.2 + z.seed) * 0.03);
+  else ctx.rotate(Math.sin(S.time * (K.scale < 0.8 ? 6 : 3) + z.seed) * 0.06);
+  // ben
+  ctx.fillStyle = K.leg;
   rr(-0.45*zu, 0.7*zu, 0.32*zu, 0.42*zu, 0.13*zu); rr(0.13*zu, 0.7*zu, 0.32*zu, 0.42*zu, 0.13*zu);
-  ctx.fillStyle = '#8fd08f'; ell(0, 0.22*zu, 0.8*zu, 0.88*zu);       // tjock kropp
-  ctx.fillStyle = '#b5e3a8'; ell(0, 0.45*zu, 0.5*zu, 0.5*zu);
-  ctx.fillStyle = '#8fd08f';
-  ell(-0.72*zu, 0.1*zu, 0.3*zu, 0.16*zu, 0.5); ell(0.72*zu, 0.1*zu, 0.3*zu, 0.16*zu, -0.5);
-  ctx.fillStyle = '#9ad89a'; circle(0, -0.75*zu, 0.55*zu);           // huvud
-  ctx.fillStyle = '#fff';                                            // fåniga ögon
-  circle(-0.2*zu, -0.85*zu, 0.19*zu); circle(0.22*zu, -0.82*zu, 0.14*zu);
-  if (z.hit){
-    ctx.fillStyle = '#f9a825';
-    starPath(-0.2*zu, -0.85*zu, 0.1*zu, t*6); ctx.fill();
-    starPath(0.22*zu, -0.82*zu, 0.08*zu, -t*6); ctx.fill();
+  // kropp + mage
+  ctx.fillStyle = K.body; ell(0, cy, 0.8*zu*(th > 1 ? 0.85 : 1), 0.88*zu*th);
+  ctx.fillStyle = K.belly; ell(0, cy + 0.23*zu, 0.5*zu, 0.5*zu);
+  // armar (disco viftar i luften)
+  ctx.fillStyle = K.body;
+  if (K.dance){
+    const wave = Math.sin(S.time * 6 + z.seed) * 0.4;
+    ell(-0.62*zu, cy - 0.55*zu, 0.3*zu, 0.15*zu, -1 - wave); ell(0.62*zu, cy - 0.55*zu, 0.3*zu, 0.15*zu, 1 + wave);
   } else {
+    ell(-0.72*zu*(th > 1 ? 0.85 : 1), cy - 0.12*zu, 0.3*zu, 0.16*zu, 0.5);
+    ell(0.72*zu*(th > 1 ? 0.85 : 1), cy - 0.12*zu, 0.3*zu, 0.16*zu, -0.5);
+  }
+  // huvud
+  ctx.fillStyle = K.head; circle(0, hy, hr2);
+  // ögon
+  if (z.hit){
+    ctx.fillStyle = '#fff'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
+    ctx.fillStyle = '#f9a825';
+    starPath(-0.2*zu, hy - 0.1*zu, 0.1*zu, t*6); ctx.fill();
+    starPath(0.22*zu, hy - 0.07*zu, 0.08*zu, -t*6); ctx.fill();
+  } else if (K.sleepy && !awake){
+    ctx.strokeStyle = '#5e35b1'; ctx.lineWidth = 0.05*zu; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(-0.2*zu, hy - 0.08*zu, 0.13*zu, 0.15, Math.PI - 0.15);
+    ctx.moveTo(0.35*zu, hy - 0.05*zu); ctx.arc(0.22*zu, hy - 0.05*zu, 0.13*zu, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#fff'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
     ctx.fillStyle = '#333';
     const look = Math.sin(S.time * 1.5 + z.seed) * 0.05 * zu;
-    circle(-0.2*zu + look, -0.83*zu, 0.08*zu); circle(0.22*zu + look, -0.81*zu, 0.06*zu);
+    circle(-0.2*zu + look, hy - 0.08*zu, 0.08*zu); circle(0.22*zu + look, hy - 0.06*zu, 0.06*zu);
   }
-  ctx.strokeStyle = '#4c7a44'; ctx.lineWidth = 0.06*zu; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.arc(0, -0.58*zu, 0.22*zu, 0.4, Math.PI - 0.4); ctx.stroke();  // leende
+  // mun (sömnig: liten snark-mun)
+  ctx.strokeStyle = K.mouth; ctx.lineWidth = 0.06*zu; ctx.lineCap = 'round';
+  if (K.sleepy && !awake){
+    ctx.beginPath(); ctx.arc(0.02*zu, hy + 0.22*zu, 0.07*zu, 0, TAU); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(0, hy + 0.17*zu, 0.22*zu, 0.4, Math.PI - 0.4); ctx.stroke();
+  }
   ctx.restore();
+  // Zzz som svävar upp från den sovande
+  if (K.sleepy && !awake && !z.hit){
+    const zt = (S.time * 0.7 + z.seed) % 1;
+    ctx.globalAlpha = 1 - zt;
+    txt('z', sx + zu*0.8, gy - zu*1.1 + hy - zu*(0.7 + zt*0.9), zu*(0.35 + zt*0.25), '#7986cb');
+    ctx.globalAlpha = 1;
+  }
   // hatt (kan flyga av — och plockas upp av enhörningen!)
   if (!z.hatTaken){
-    let hx = sx, hy = gy - zu * 1.1 - 1.25 * zu, hr = 0;
+    let hx = sx, hhy = gy - zu * 1.1 + hy - hr2 * 0.85, hrot = 0;
     if (z.hit){
       const ht = Math.min(t, 0.8);
       hx += z.tipDir * -1 * ht * zu * 1.6;
-      hy += -ht * zu * 3 + ht * ht * zu * 5.2;
-      hr = t * 5 * z.tipDir;
-      if (t > 0.8) { hy = gy - 0.18 * zu; hr = z.tipDir * 2.6; }
-    } else if (bt < 0.5){ hy -= Math.sin(bt / 0.5 * Math.PI) * zu * 0.9; hr = bt * 9; }  // hatten snurrar vid studs
-    ctx.save(); ctx.translate(hx, hy); ctx.rotate(hr);
-    ctx.fillStyle = '#6d4c41'; ell(0, 0.1*zu, 0.5*zu, 0.12*zu); rr(-0.3*zu, -0.32*zu, 0.6*zu, 0.42*zu, 0.1*zu);
-    ctx.fillStyle = '#ffca28'; rr(-0.3*zu, -0.02*zu, 0.6*zu, 0.1*zu, 0.03*zu);
+      hhy += -ht * zu * 3 + ht * ht * zu * 5.2;
+      hrot = t * 5 * z.tipDir;
+      if (t > 0.8) { hhy = gy - 0.18 * zu; hrot = z.tipDir * 2.6; }
+    } else if (bt < 0.5){ hhy -= Math.sin(bt / 0.5 * Math.PI) * zu * 0.9; hrot = bt * 9; }  // hatten snurrar vid studs
+    ctx.save(); ctx.translate(hx, hhy); ctx.rotate(hrot);
+    drawHatShape(K.hat, zu);
     ctx.restore();
   }
   // pratbubbla
   if (z.hit && t < 1.5){
-    const bx = sx, by = gy - zu * 3.1;
+    const bx = sx, by = gy - zu * 1.1 + hy - zu * 1.6;
     ctx.globalAlpha = clamp(1.5 - t, 0, 1);
     ctx.fillStyle = '#fff';
     rr(bx - zu*1.1, by - zu*0.45, zu*2.2, zu*0.9, zu*0.45);
@@ -892,18 +961,19 @@ function update(dt){
       for (const z of S.zombies){
         const off = z.pace && !z.hit ? Math.sin(S.time * z.spd + z.seed) * z.range : 0;
         const sx = (z.wx + off - S.p) * w + heroX;
-        const zu = unit() * 0.85;
+        const K = z.k || ZK.norm;
+        const zu = unit() * 0.85 * K.scale;
         // plocka upp tappad hatt från marken
         if (z.hit && !z.hatTaken && S.time - z.hitT > 0.85){
           const hx = sx - z.tipDir * 1.28 * zu;
           if (Math.abs(hx - heroX) < unit() * 0.9 && S.uy > standY() - unit()){
-            z.hatTaken = true; S.hats++;
+            z.hatTaken = true; S.hats.push(K.hat);
             sndStar(); buzz(15); confetti(hx, groundY() - zu * 0.4, 10);
           }
         }
         if (z.hit) continue;
         const feet = S.uy + unit() * 1.18;
-        const zTop = groundY() - zu * 1.6;   // strax över zombiens huvud räknas som "över"
+        const zTop = groundY() - zu * (1.6 + ((K.tall || 1) - 1) * 1.7);   // långa kräver högre hopp
         const overlapX = Math.abs(sx - heroX) < (unit() * 0.7 + zu * 0.7) * 0.55;
         if (overlapX && S.vy > 60 && feet < zTop + zu * 0.6 && feet > zTop - zu * 0.4){
           // snäll huvudstuds — zombien blir en fnittrig studsmatta!
@@ -1195,8 +1265,12 @@ function render(){
 
   if (S.paused){
     ctx.fillStyle = 'rgba(20,30,60,.55)'; ctx.fillRect(0, 0, w, h);
+    drawUnicorn(w/2, h * 0.27, unit() * 0.95,        // förhandsvisning som byter färg direkt
+      { face: 1, happy: true, wings: 0.6, flap: S.time * 3, mane: playerMane() });
     drawArrowBtn(w/2, h/2, btnR() * 1.4, '');
+    drawPalette();
     drawMuteBtn();
+    drawParticles();
   }
 }
 function calmBtn(){ return { x: w * 0.25, y: h * 0.78, r: btnR() * 1.15 }; }
@@ -1220,6 +1294,12 @@ function onDown(px, py){
   audioInit();
   if (S.paused){
     if (hitCircle(px, py, muteBtn())){ toggleMute(); return; }
+    const dot = paletteDots().find(d => Math.hypot(px - d.x, py - d.y) < d.r * 1.9);
+    if (dot){                                        // byt färg mitt i spelet!
+      maneIx = dot.i; localStorage.setItem('sagovarld_mane', String(maneIx));
+      sndStar(); buzz(15); confetti(dot.x, dot.y, 10);
+      return;
+    }
     if (hitCircle(px, py, { x: w/2, y: h/2, r: btnR() * 1.4 })){ S.paused = false; sndTap(); }
     return;
   }
@@ -1313,6 +1393,7 @@ function loop(ts){
   const dt = Math.min(0.033, (ts - last) / 1000 || 0.016);
   last = ts;
   if (!S.paused) update(dt);
+  else { S.time += dt; updParticles(dt); }   // pausskärmen lever: pulsande palett, konfetti
   render();
   requestAnimationFrame(loop);
 }
