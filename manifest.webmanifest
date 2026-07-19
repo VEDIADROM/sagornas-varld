@@ -1,0 +1,17 @@
+{
+  "name": "Sagornas värld",
+  "short_name": "Sagornas värld",
+  "description": "Sagospel för barn — enhörning, stjärnor och snälla zombisar",
+  "lang": "sv",
+  "start_url": ".",
+  "scope": ".",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#8ed3ff",
+  "theme_color": "#8ed3ff",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -2,10 +2,23 @@
 <html lang="sv">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#8ed3ff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sagornas värld">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Sagornas värld</title>
 <style>
+  :root{
+    --sat: env(safe-area-inset-top, 0px);  --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+  }
   html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#aee3ff;touch-action:none;
+    overscroll-behavior:none;position:fixed;inset:0;width:100%;
     -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
   canvas{display:block;position:fixed;inset:0;touch-action:none;}
 </style>
@@ -24,6 +37,7 @@
 const CV = document.getElementById('c');
 const ctx = CV.getContext('2d');
 let w = 0, h = 0, dpr = 1;
+const SAFE = { t: 0, b: 0, l: 0, r: 0 };   // säkra zoner (notch/hemindikator)
 
 function resize(){
   dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -31,6 +45,11 @@ function resize(){
   CV.width = Math.round(w * dpr); CV.height = Math.round(h * dpr);
   CV.style.width = w + 'px'; CV.style.height = h + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cs = getComputedStyle(document.documentElement);
+  SAFE.t = parseFloat(cs.getPropertyValue('--sat')) || 0;
+  SAFE.b = parseFloat(cs.getPropertyValue('--sab')) || 0;
+  SAFE.l = parseFloat(cs.getPropertyValue('--sal')) || 0;
+  SAFE.r = parseFloat(cs.getPropertyValue('--sar')) || 0;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -51,8 +70,13 @@ function audioInit(){
   if (AC && AC.state === 'suspended') AC.resume();
   if (AC && !musicTimer) musicTimer = setInterval(musicTick, 120);
 }
+let muted = localStorage.getItem('sagovarld_mute') === '1';
+function buzz(pattern){                       // vibration där det stöds (Android)
+  if (muted) return;
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch(e){}
+}
 function tone(f, dur, type, vol, delay, slide){
-  if (!AC) return;
+  if (!AC || muted) return;
   type = type || 'sine'; vol = vol == null ? 0.12 : vol; delay = delay || 0;
   const t = AC.currentTime + delay;
   const o = AC.createOscillator(), g = AC.createGain();
@@ -202,7 +226,7 @@ function go(phase){
     makeClouds();
   }
   if (phase === 'win'){
-    sndWin(); S.winConfT = 0;
+    sndWin(); buzz([60, 60, 140]); S.winConfT = 0;
     localStorage.setItem('sagovarld_level', String(S.level + 1));
   }
   if (phase === 'lose'){ sndAlmost(); }
@@ -582,7 +606,20 @@ function drawHandBtn(x, y, r){
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('✋', x, y + r*0.05);
 }
-function pauseBtn(){ const r = btnR() * 0.7; return { x: w - r - 12, y: r + 12, r }; }
+function pauseBtn(){ const r = btnR() * 0.7; return { x: w - r - 12 - SAFE.r, y: r + 12 + SAFE.t, r }; }
+function muteBtn(){ const r = btnR() * 0.7; return { x: r + 12 + SAFE.l, y: r + 12 + SAFE.t, r }; }
+function drawMuteBtn(){
+  const b = muteBtn();
+  ctx.fillStyle = '#7e57c2'; circle(b.x, b.y, b.r);
+  ctx.font = Math.round(b.r * 0.95) + 'px "Segoe UI Emoji",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(muted ? '🔇' : '🔊', b.x, b.y + b.r * 0.06);
+}
+function toggleMute(){
+  muted = !muted;
+  localStorage.setItem('sagovarld_mute', muted ? '1' : '0');
+  if (!muted) sndTap();
+}
 function hitCircle(px, py, c){ return Math.hypot(px - c.x, py - c.y) <= c.r * 1.25; }
 
 /* ---------------- räknare (HUD) ---------------- */
@@ -596,7 +633,7 @@ function drawBirdHUD(){
   const x0 = w/2 - gap * 2.5;
   for (let i = 0; i < 6; i++){
     const sc = popScale(S.birdPopT, i === S.birdsFound - 1);
-    drawBird(x0 + i * gap, s * 2.2, s * sc, S.birds[i] ? S.birds[i].col : '#ff7043', S.time + i, i >= S.birdsFound);
+    drawBird(x0 + i * gap, s * 2.2 + SAFE.t, s * sc, S.birds[i] ? S.birds[i].col : '#ff7043', S.time + i, i >= S.birdsFound);
   }
 }
 function drawStarHUD(){
@@ -605,7 +642,7 @@ function drawStarHUD(){
   for (let i = 0; i < 10; i++){
     const sc = popScale(S.starPopT, i === S.starsFound - 1);
     ctx.fillStyle = i < S.starsFound ? '#ffd54f' : 'rgba(255,255,255,.25)';
-    starPath(x0 + i * gap, s * 2.4, s * 1.1 * sc, 0); ctx.fill();
+    starPath(x0 + i * gap, s * 2.4 + SAFE.t, s * 1.1 * sc, 0); ctx.fill();
     if (i < S.starsFound){ ctx.strokeStyle = '#ffb300'; ctx.lineWidth = 1.5; ctx.stroke(); }
   }
 }
@@ -616,13 +653,13 @@ function drawHeartHUD(){
     const full = i < S.hearts;
     const sc = popScale(S.heartPopT, i === S.hearts);   // hjärtat som just tömdes studsar till
     ctx.fillStyle = full ? '#ff3d77' : 'rgba(255,255,255,.6)';
-    heartPath(x0 + i * gap, s * 2.4, s * 1.15 * sc); ctx.fill();
+    heartPath(x0 + i * gap, s * 2.4 + SAFE.t, s * 1.15 * sc); ctx.fill();
     ctx.strokeStyle = full ? '#d81b60' : '#c5b0ba'; ctx.lineWidth = 1.5; ctx.stroke();
   }
 }
 function drawProgress(){
   // liten bildbaserad karta: enhörningsprick som rör sig mot mini-slottet
-  const y = clamp(w / 38, 8, 16) * 4.6, x0 = w * 0.22, x1 = w * 0.78;
+  const y = clamp(w / 38, 8, 16) * 4.6 + SAFE.t, x0 = w * 0.22, x1 = w * 0.78;
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
@@ -706,7 +743,7 @@ function update(dt){
           const by = b.cover === 'cloud' ? S.clouds[b.cloudIx].fy * h : b.fy * h;
           if (Math.hypot(bx - S.ux, by - S.uy) < unit() * 1.5){
             b.found = true; S.birdsFound++; S.happyT = 0.7; S.birdPopT = S.time;
-            sndBird(); confetti(bx, by, 26);
+            sndBird(); buzz(25); confetti(bx, by, 26);
             if (S.birdsFound >= 6){ S.bigStar = true; S.bigStarT = S.time; sndStar(); }
           }
         }
@@ -727,7 +764,7 @@ function update(dt){
         if (st.got) continue;
         if (Math.hypot(st.fx * w - S.ux, st.fy * h - S.uy) < unit() * 1.6){
           st.got = true; S.starsFound++; S.happyT = 0.7; S.starPopT = S.time;
-          sndStar(); confetti(st.fx * w, st.fy * h, 22);
+          sndStar(); buzz(25); confetti(st.fx * w, st.fy * h, 22);
           if (S.starsFound >= 10) go('toGround');
         }
       }
@@ -783,7 +820,7 @@ function update(dt){
               vy: Math.sin(a) * (80 + rnd()*140), c: i % 2 ? '#7cc454' : '#96d666',
               r: 3 + rnd()*4, t: 0, life: 0.5 + rnd()*0.3 });
           }
-          sndOops();
+          sndOops(); buzz(70);
           if (S.hearts <= 0){ go('lose'); }
         }
       }
@@ -914,6 +951,7 @@ function render(){
       txt('⭐ 🦄 ⭐', w/2, h * 0.2 + clamp(w*0.085,30,72) * 0.95, clamp(w*0.045, 18, 34), '#fff');
       drawArrowBtn(w/2, h * 0.62, btnR() * 1.25, '');
       txt('Nivå ' + S.level, w/2, h * 0.62 + btnR() * 2.1, clamp(w*0.04, 16, 26), '#5d4037', '#fff');
+      drawMuteBtn();
       break;
     }
     case 'sky': case 'calm': {
@@ -924,7 +962,7 @@ function render(){
       drawParticles();
       if (S.phase === 'sky'){ drawBirdHUD(); if (S.bigStar) drawBigStar(); }
       if (S.phase === 'calm'){
-        drawArrowBtn(w - btnR()*1.1, h - btnR()*1.4, btnR() * 0.9, '');
+        drawArrowBtn(w - btnR()*1.1 - SAFE.r, h - btnR()*1.4 - SAFE.b, btnR() * 0.9, '');
       }
       const pb = pauseBtn(); drawHandBtn(pb.x, pb.y, pb.r);
       break;
@@ -1048,6 +1086,7 @@ function render(){
   if (S.paused){
     ctx.fillStyle = 'rgba(20,30,60,.55)'; ctx.fillRect(0, 0, w, h);
     drawArrowBtn(w/2, h/2, btnR() * 1.4, '');
+    drawMuteBtn();
   }
 }
 function calmBtn(){ return { x: w * 0.25, y: h * 0.78, r: btnR() * 1.15 }; }
@@ -1056,12 +1095,14 @@ function calmBtn(){ return { x: w * 0.25, y: h * 0.78, r: btnR() * 1.15 }; }
 function onDown(px, py){
   audioInit();
   if (S.paused){
+    if (hitCircle(px, py, muteBtn())){ toggleMute(); return; }
     if (hitCircle(px, py, { x: w/2, y: h/2, r: btnR() * 1.4 })){ S.paused = false; sndTap(); }
     return;
   }
   const pb = pauseBtn();
   switch (S.phase){
     case 'menu':
+      if (hitCircle(px, py, muteBtn())){ toggleMute(); break; }
       if (hitCircle(px, py, { x: w/2, y: h * 0.62, r: btnR() * 1.25 })){ sndTap(); go('sky'); }
       break;
     case 'sky':
@@ -1090,7 +1131,7 @@ function onDown(px, py){
       break;
     case 'calm':
       if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); return; }
-      if (hitCircle(px, py, { x: w - btnR()*1.1, y: h - btnR()*1.4, r: btnR() * 0.9 })){
+      if (hitCircle(px, py, { x: w - btnR()*1.1 - SAFE.r, y: h - btnR()*1.4 - SAFE.b, r: btnR() * 0.9 })){
         sndTap(); S.level = loadLevel(); go('sky'); return;
       }
       if (!S.flying){
@@ -1134,6 +1175,10 @@ function loop(ts){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
+/* PWA: offline + installerbar på hemskärmen */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
+  navigator.serviceWorker.register('sw.js').catch(function(){});
 </script>
 </body>
 </html>

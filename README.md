@@ -10,6 +10,15 @@ Ett sagospel för barn (5–9 år), designat av en 6-åring. Hjälp den lilla en
 
 Funkar på mobil, surfplatta och dator (tryck på skärmen eller använd mellanslag för att hoppa).
 
+## Installera som app 📱
+
+Spelet är en PWA — öppna länken i mobilen och välj **"Lägg till på hemskärmen"**
+(Delningsmenyn i Safari på iPhone/iPad, menyn ⋮ i Chrome på Android).
+Då får du en egen enhörningsikon, spelet startar i helskärm och funkar även offline.
+
 ## Teknik
 
-En enda `index.html` — all grafik ritas med canvas, alla ljud görs med Web Audio API. Inga externa beroenden, inga byggsteg. Nivåframsteg sparas i webbläsarens localStorage.
+Spelet bor i en enda `index.html` — all grafik ritas med canvas, alla ljud görs med Web Audio API.
+Inga externa beroenden, inga byggsteg. Nivåframsteg sparas i webbläsarens localStorage.
+Därtill: `manifest.webmanifest` + `sw.js` (offline/installation), hemskärmsikoner,
+vibrationsfeedback, ljud av/på-knapp och safe area-hantering för mobiler med notch.
