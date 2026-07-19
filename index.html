@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
 <meta name="theme-color" content="#8ed3ff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,10 +21,27 @@
     overscroll-behavior:none;position:fixed;inset:0;width:100%;
     -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
   canvas{display:block;position:fixed;inset:0;touch-action:none;}
+  canvas:focus{outline:4px solid rgba(255,255,255,.9);outline-offset:-5px;}
+  .a11y-action{position:fixed;left:-9999px;top:0;z-index:10;font:700 18px system-ui,sans-serif;
+    border:3px solid #fff;border-radius:14px;padding:12px 16px;background:#512da8;color:#fff;}
+  .a11y-action:focus{left:12px;top:12px;}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="c" role="application" tabindex="0" aria-describedby="gameHelp"
+  aria-label="Sagornas värld. Tryck Starta spelet och följ de animerade händerna."></canvas>
+<p id="gameHelp" class="sr-only">Barnspel. Använd piltangenterna för att flyga och mellanslag för att hoppa.</p>
+<div aria-label="Spelkontroller">
+  <button id="a11yStart" class="a11y-action" type="button">Starta spelet</button>
+  <button id="a11yPause" class="a11y-action" type="button">Pausa eller fortsätt</button>
+  <button id="a11yMute" class="a11y-action" type="button">Ljud av eller på</button>
+  <button id="a11yHome" class="a11y-action" type="button">Till startsidan</button>
+  <button id="a11yCalm" class="a11y-action" type="button">Lugn flygtur</button>
+  <button id="a11yComfort" class="a11y-action" type="button">Mindre rörelse</button>
+</div>
+<p id="gameStatus" class="sr-only" aria-live="polite"></p>
 <script>
 'use strict';
 /* ============================================================
@@ -40,6 +57,7 @@ let w = 0, h = 0, dpr = 1;
 const SAFE = { t: 0, b: 0, l: 0, r: 0 };   // säkra zoner (notch/hemindikator)
 
 function resize(){
+  const oldW = w, oldH = h;
   dpr = Math.min(2, window.devicePixelRatio || 1);
   w = window.innerWidth; h = window.innerHeight;
   CV.width = Math.round(w * dpr); CV.height = Math.round(h * dpr);
@@ -50,6 +68,19 @@ function resize(){
   SAFE.b = parseFloat(cs.getPropertyValue('--sab')) || 0;
   SAFE.l = parseFloat(cs.getPropertyValue('--sal')) || 0;
   SAFE.r = parseFloat(cs.getPropertyValue('--sar')) || 0;
+  if (oldW > 0 && oldH > 0 && window.G){
+    const g = window.G, rotated = (oldW > oldH) !== (w > h);
+    g.ux = g.ux / oldW * w; g.tx = g.tx / oldW * w;
+    g.uy = g.uy / oldH * h; g.ty = g.ty / oldH * h;
+    g.ux = clamp(g.ux, SAFE.l + unit()*1.4, w - SAFE.r - unit()*1.4);
+    g.tx = clamp(g.tx, SAFE.l + unit()*1.4, w - SAFE.r - unit()*1.4);
+    if ((g.phase === 'sky' || g.phase === 'calm') && !g.flying) g.uy = g.ty = standY();
+    if ((g.phase === 'ground' || g.phase === 'lose') && g.grounded) g.uy = standY();
+    if (rotated && ['sky','space','ground','calm'].includes(g.phase)){
+      g.paused = true;
+      announce('Spelet pausades när skärmen vreds.');
+    }
+  }
 }
 window.addEventListener('resize', resize);
 resize();
@@ -63,6 +94,23 @@ function unit(){ return clamp(Math.min(w, h) * 0.085, 26, 64); }   // unicorn si
 function groundY(){ return h * 0.82; }
 function standY(){ return groundY() - unit() * 1.18; }
 
+/* säker lagring: spelet fungerar även om privatläge blockerar localStorage */
+const memoryStore = Object.create(null);
+const store = {
+  get(key, fallback){
+    try { const value = localStorage.getItem(key); return value == null ? fallback : value; }
+    catch(e){ return key in memoryStore ? memoryStore[key] : fallback; }
+  },
+  set(key, value){
+    memoryStore[key] = String(value);
+    try { localStorage.setItem(key, String(value)); } catch(e){}
+  }
+};
+function announce(message){
+  const el = document.getElementById('gameStatus');
+  if (el){ el.textContent = ''; requestAnimationFrame(() => { el.textContent = message; }); }
+}
+
 /* ---------------- ljud (Web Audio, inga filer) ---------------- */
 let AC = null;
 function audioInit(){
@@ -70,9 +118,12 @@ function audioInit(){
   if (AC && AC.state === 'suspended') AC.resume();
   if (AC && !musicTimer) musicTimer = setInterval(musicTick, 120);
 }
-let muted = localStorage.getItem('sagovarld_mute') === '1';
+let muted = store.get('sagovarld_mute', '0') === '1';
+let haptics = store.get('sagovarld_haptics', '1') !== '0';
+let gentleMotion = store.get('sagovarld_gentle',
+  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? '1' : '0') === '1';
 function buzz(pattern){                       // vibration där det stöds (Android)
-  if (muted) return;
+  if (!haptics || gentleMotion) return;
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch(e){}
 }
 function tone(f, dur, type, vol, delay, slide){
@@ -129,7 +180,7 @@ function musicTick(){
 
 /* ---------------- speltillstånd ---------------- */
 function loadLevel(){
-  const v = parseInt(localStorage.getItem('sagovarld_level') || '1', 10);
+  const v = parseInt(store.get('sagovarld_level', '1'), 10);
   return (isNaN(v) || v < 1) ? 1 : v;
 }
 const S = {
@@ -146,6 +197,8 @@ const S = {
   ribbon: [], landT: 0, shakeT: 0, birdPopT: -9, starPopT: -9, heartPopT: -9,
   takeoffT: 0,
   bubbles: [], bubbleT: 3, popChain: 0, popT: -9, hats: [],
+  idleT: 0, coyoteT: 0, jumpBufferT: 0, misses: 0, assist: 0, rescued: false,
+  checkpointShown: false, activePointer: null,
 };
 /* manfärger — "måla din enhörning" */
 const MANES = [
@@ -156,7 +209,7 @@ const MANES = [
   { main:'#ffd54f', light:'#ffe38a', pale:'#fff0bd' },   // gul
   { main:'#ff8a65', light:'#ffab91', pale:'#ffccbc' },   // orange
 ];
-let maneIx = parseInt(localStorage.getItem('sagovarld_mane') || '0', 10);
+let maneIx = parseInt(store.get('sagovarld_mane', '0'), 10);
 if (isNaN(maneIx) || maneIx < 0 || maneIx >= MANES.length) maneIx = 0;
 const playerMane = () => MANES[maneIx];
 window.G = S; // för test/felsökning
@@ -178,10 +231,12 @@ function makeFriends(many){
 function makeBirds(){
   S.birds = []; S.birdsFound = 0; S.bigStar = false;
   const hidden = clamp(S.level - 1, 0, 4);          // fler gömda per nivå
+  const hudSize = clamp(w / 34, 9, 17);
+  const top = clamp((hudSize * 5.5 + SAFE.t + unit()) / h, 0.16, 0.32);
   const cols = ['#ff7043','#42a5f5','#ffca28','#ab47bc','#66bb6a','#ec407a'];
   for (let i = 0; i < 6; i++){
     const b = { fx: 0.1 + (i + 0.5) * 0.8 / 6 + (rnd()-0.5)*0.06,
-                fy: 0.14 + rnd() * 0.42, col: cols[i], found: false,
+                fy: top + rnd() * (0.62 - top), col: cols[i], found: false,
                 seed: rnd() * 10, cover: 'none' };
     if (i < hidden){
       if (i % 2 === 0 && S.level >= 3){ b.cover = 'tower'; b.fx = 0.12 + (i/2) * 0.1; b.fy = 0.56; }
@@ -192,10 +247,12 @@ function makeBirds(){
 }
 function makeStars(){
   S.stars = []; S.starsFound = 0;
+  const hudSize = clamp(w / 40, 8, 15);
+  const top = clamp((hudSize * 5.8 + SAFE.t + unit() * 0.7) / h, 0.12, 0.28);
   for (let i = 0; i < 10; i++){
     let fx, fy, ok = false, tries = 0;
     while (!ok && tries++ < 40){
-      fx = 0.08 + rnd() * 0.84; fy = 0.08 + rnd() * 0.62; ok = true;
+      fx = 0.08 + rnd() * 0.84; fy = top + rnd() * (0.72 - top); ok = true;
       for (const s of S.stars) if (Math.hypot((s.fx-fx)*w, (s.fy-fy)*h) < unit()*2.2) ok = false;
     }
     S.stars.push({ fx, fy, got: false, seed: rnd() * 10 });
@@ -229,35 +286,47 @@ function makeZombies(){
 
 function go(phase){
   S.phase = phase; S.transT = 0; S.particles = []; S.ribbon = [];
-  S.bubbles = []; S.bubbleT = 2.5; S.takeoffT = 0;
+  S.bubbles = []; S.bubbleT = 2.5; S.takeoffT = 0; S.idleT = 0;
+  if (phase === 'menu'){
+    S.level = loadLevel(); makeClouds(); makeFriends(false); S.paused = false;
+    announce('Startskärm. Välj manfärg, starta sagan eller ta en lugn flygtur.');
+  }
   if (phase === 'sky' || phase === 'calm'){
     makeClouds(); makeFriends(phase === 'calm');
     if (phase === 'sky') makeBirds();
     S.flying = phase === 'calm'; S.wings = phase === 'calm' ? 1 : 0;
     S.ux = w * 0.3; S.uy = phase === 'calm' ? h * 0.4 : standY();
     S.tx = S.ux; S.ty = S.uy; S.face = 1;
+    announce(phase === 'calm' ? 'Lugn flygtur. Dra för att flyga och lek med vännerna.' : 'Hitta sex fåglar. Tryck på hjärtat och dra för att flyga.');
   }
   if (phase === 'toSpace'){ sndWhoosh(); }
   if (phase === 'space'){
     makeStars(); S.flying = true; S.wings = 1;
     S.ux = w/2; S.uy = h + unit()*2; S.tx = w/2; S.ty = h*0.55; S.face = 1;
+    announce('Rymden. Samla tio stjärnor genom att flyga in i dem.');
   }
   if (phase === 'toGround'){ sndWhoosh(); }
   if (phase === 'ground'){
     makeZombies(); S.p = 0; S.vy = 0; S.grounded = true; S.jumps = 0;
     S.hearts = 10; S.invulnT = 0; S.wings = 0; S.flying = false; S.hats = [];
     S.uy = standY(); S.banner = 'Hoppa!'; S.bannerT = 1.6;
+    S.coyoteT = 0; S.jumpBufferT = 0; S.misses = 0; S.assist = 0;
+    S.rescued = false; S.checkpointShown = false;
     makeClouds();
+    announce('Vägen till slottet. Tryck för att hoppa. Tryck en gång till i luften för dubbelhopp.');
   }
   if (phase === 'win'){
     sndWin(); buzz([60, 60, 140]); S.winConfT = 0;
-    localStorage.setItem('sagovarld_level', String(S.level + 1));
+    store.set('sagovarld_level', String(S.level + 1));
+    announce('Hurra! Du klarade sagan. Välj nästa nivå eller en lugn flygtur.');
   }
-  if (phase === 'lose'){ sndAlmost(); }
+  if (phase === 'lose'){ sndAlmost(); announce('Nästan! Prova igen när du vill.'); }
+  syncA11y();
 }
 
 /* ---------------- partiklar ---------------- */
 function confetti(x, y, n){
+  if (gentleMotion) n = Math.max(3, Math.ceil(n * 0.22));
   const cols = ['#ff5c8a','#ffd54f','#4fc3f7','#81c784','#ba68c8','#ff8a65'];
   for (let i = 0; i < n; i++){
     const a = rnd() * TAU, sp = 60 + rnd() * 260;
@@ -723,7 +792,14 @@ function drawZombie(z, sx, u){
 }
 
 /* ---------------- knappar ---------------- */
-function btnR(){ return Math.max(w * 0.075, 40); }
+function btnR(){ return clamp(Math.min(w, h) * 0.085, 40, 64); }
+function playBtn(){ return { x: w/2, y: h * 0.62, r: btnR() * 1.25 }; }
+function menuCalmBtn(){ return { x: Math.max(btnR()*1.35, w*0.16), y: h * 0.64, r: btnR() * 0.72 }; }
+function comfortBtn(){ const b = muteBtn(); return { x: b.x + b.r * 2.45, y: b.y, r: b.r }; }
+function resumeBtn(){ return { x:w/2, y:h*.4, r:btnR()*1.25 }; }
+function homeBtn(){ return { x: w * 0.35, y: Math.min(h * 0.64, h - SAFE.b - btnR()*2.15), r: btnR() * 0.82 }; }
+function restartBtn(){ return { x: w * 0.65, y: Math.min(h * 0.64, h - SAFE.b - btnR()*2.15), r: btnR() * 0.82 }; }
+function winNextBtn(){ const r = btnR() * 1.05; return { x: w * 0.72, y: Math.min(h * 0.76, h - SAFE.b - r * 1.75), r }; }
 function drawArrowBtn(x, y, r, label){
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
@@ -736,10 +812,21 @@ function drawArrowBtn(x, y, r, label){
   if (label) txt(label, x, y + r * 1.55, Math.max(16, r * 0.42), '#2e7d32', '#fff');
 }
 function drawHandBtn(x, y, r){
-  ctx.fillStyle = '#e53935'; circle(x, y, r);
-  ctx.font = Math.round(r*1.1) + 'px "Segoe UI Emoji",sans-serif';
+  ctx.fillStyle = '#6a4bb5'; circle(x, y, r);
+  ctx.fillStyle = '#fff';
+  rr(x-r*.34, y-r*.42, r*.22, r*.84, r*.08);
+  rr(x+r*.12, y-r*.42, r*.22, r*.84, r*.08);
+}
+function drawIconBtn(b, icon, color, label){
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.2)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = color; circle(b.x, b.y, b.r);
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.font = Math.round(b.r*0.95) + 'px "Segoe UI Emoji",sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('✋', x, y + r*0.05);
+  ctx.fillText(icon, b.x, b.y + b.r*0.04);
+  ctx.restore();
+  if (label) txt(label, b.x, b.y + b.r*1.48, Math.max(14, b.r*.4), '#4a355d', '#fff');
 }
 function pauseBtn(){ const r = btnR() * 0.7; return { x: w - r - 12 - SAFE.r, y: r + 12 + SAFE.t, r }; }
 function muteBtn(){ const r = btnR() * 0.7; return { x: r + 12 + SAFE.l, y: r + 12 + SAFE.t, r }; }
@@ -750,10 +837,19 @@ function drawMuteBtn(){
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(muted ? '🔇' : '🔊', b.x, b.y + b.r * 0.06);
 }
+function drawComfortBtn(){
+  const b = comfortBtn();
+  drawIconBtn(b, gentleMotion ? '🌙' : '✨', gentleMotion ? '#397d68' : '#f6a623', 'Lugnare');
+}
 function toggleMute(){
   muted = !muted;
-  localStorage.setItem('sagovarld_mute', muted ? '1' : '0');
+  store.set('sagovarld_mute', muted ? '1' : '0');
   if (!muted) sndTap();
+  announce(muted ? 'Ljudet är av.' : 'Ljudet är på.');
+}
+function toggleGentle(){
+  gentleMotion = !gentleMotion; store.set('sagovarld_gentle', gentleMotion ? '1' : '0');
+  announce(gentleMotion ? 'Lugnare rörelser är på.' : 'Alla rörelser är på.');
 }
 function hitCircle(px, py, c){ return Math.hypot(px - c.x, py - c.y) <= c.r * 1.25; }
 
@@ -770,6 +866,7 @@ function drawBirdHUD(){
     const sc = popScale(S.birdPopT, i === S.birdsFound - 1);
     drawBird(x0 + i * gap, s * 2.2 + SAFE.t, s * sc, S.birds[i] ? S.birds[i].col : '#ff7043', S.time + i, i >= S.birdsFound);
   }
+  txt(S.birdsFound + '/6', w/2, s * 4.7 + SAFE.t, Math.max(14, s*1.3), '#5d4037', '#fff');
 }
 function drawStarHUD(){
   const s = clamp(w / 40, 8, 15), gap = s * 2.9;
@@ -780,6 +877,7 @@ function drawStarHUD(){
     starPath(x0 + i * gap, s * 2.4 + SAFE.t, s * 1.1 * sc, 0); ctx.fill();
     if (i < S.starsFound){ ctx.strokeStyle = '#ffb300'; ctx.lineWidth = 1.5; ctx.stroke(); }
   }
+  txt(S.starsFound + '/10', w/2, s * 5 + SAFE.t, Math.max(14, s*1.35), '#fff', '#29145f');
 }
 function drawHeartHUD(){
   const s = clamp(w / 38, 8, 16), gap = s * 2.6;
@@ -809,6 +907,90 @@ function drawProgress(){
   ctx.restore();
 }
 
+/* ---------------- ordlös spelcoach ---------------- */
+function birdScreenPos(b){
+  if (b.cover === 'cloud'){
+    const c = S.clouds[b.cloudIx]; return { x:(c.fx + 0.06) * w, y:c.fy * h };
+  }
+  return { x:b.fx * w, y:b.fy * h };
+}
+function nearestBirdPos(){
+  let best = null, bestD = Infinity;
+  for (const b of S.birds){
+    if (b.found) continue;
+    const p = birdScreenPos(b), d = Math.hypot(p.x-S.ux, p.y-S.uy);
+    if (d < bestD){ best = p; bestD = d; }
+  }
+  return best;
+}
+function nearestStarPos(){
+  let best = null, bestD = Infinity;
+  for (const st of S.stars){
+    if (st.got) continue;
+    const p = { x:st.fx*w, y:st.fy*h }, d = Math.hypot(p.x-S.ux, p.y-S.uy);
+    if (d < bestD){ best = p; bestD = d; }
+  }
+  return best;
+}
+function nextZombiePos(){
+  const heroX = w * 0.26;
+  for (const z of S.zombies){
+    if (z.hit) continue;
+    const off = z.pace ? Math.sin(S.time*z.spd+z.seed)*z.range : 0;
+    const x = (z.wx + off - S.p) * w + heroX;
+    if (x > heroX + unit()*.7) return { x, y:groundY()-unit()*1.2 };
+  }
+  return null;
+}
+function drawTapCoach(x, y){
+  const slowT = gentleMotion ? 0 : S.time;
+  const pulse = 1 + Math.sin(slowT * 5) * 0.14;
+  ctx.save();
+  ctx.globalAlpha = 0.82;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 5;
+  circleStroke(x, y, unit() * (0.75 + (S.time % 1) * 0.55));
+  ctx.font = Math.round(unit()*1.05*pulse) + 'px "Segoe UI Emoji",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('👆', x + unit()*.18, y + unit()*1.15);
+  ctx.restore();
+}
+function circleStroke(x, y, r){ ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke(); }
+function drawDragCoach(x1, y1, x2, y2){
+  const t = gentleMotion ? 0.55 : (S.time * 0.38) % 1;
+  ctx.save(); ctx.globalAlpha = 0.78;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.setLineDash([8,12]);
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo((x1+x2)/2, Math.min(y1,y2)-unit(), x2,y2); ctx.stroke();
+  ctx.setLineDash([]);
+  const cx = lerp(x1,x2,t), cy = lerp(y1,y2,t) - Math.sin(t*Math.PI)*unit();
+  ctx.font = Math.round(unit()*.95) + 'px "Segoe UI Emoji",sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('👆', cx, cy);
+  ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 4; circleStroke(x2,y2,unit()*(.75+Math.sin(S.time*4)*.12));
+  ctx.restore();
+}
+function drawJumpGuide(){
+  const z = nextZombiePos(); if (!z || z.x > w + unit()*2) return;
+  const x1 = w*.26, y1 = standY(), x2 = z.x + unit()*.8, y2 = standY();
+  ctx.save(); ctx.globalAlpha = .62; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.setLineDash([10,12]);
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo((x1+x2)/2, y1-unit()*3.6, x2,y2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+}
+function drawCoach(){
+  if (S.paused) return;
+  if (S.phase === 'sky'){
+    if (S.bigStar){ const b = bigStarBtn(); drawTapCoach(b.x,b.y); return; }
+    if (!S.flying){ const b = heartBtnPos(); drawTapCoach(b.x,b.y); return; }
+    if (S.birdsFound === 0 || S.idleT > 6){ const p = nearestBirdPos(); if (p) drawDragCoach(S.ux,S.uy,p.x,p.y); }
+  } else if (S.phase === 'space' && (S.starsFound === 0 || S.idleT > 6)){
+    const p = nearestStarPos(); if (p) drawDragCoach(S.ux,S.uy,p.x,p.y);
+  } else if (S.phase === 'ground' && (S.bannerT > 0 || S.p < 1.15 || S.assist)){
+    drawJumpGuide(); drawTapCoach(w*.78, h*.67);
+  }
+}
+
+function setFlyTarget(px, py, pointerType){
+  S.tx = px;
+  S.ty = py - (pointerType === 'touch' ? clamp(unit()*1.55, 56, 90) : 0);
+}
+
 /* ---------------- fysik & logik ---------------- */
 function deployWings(){
   S.flying = true; sndWings();
@@ -816,8 +998,12 @@ function deployWings(){
   S.ty = S.uy - h * 0.3; S.tx = S.ux;
 }
 function jump(){
-  if (S.grounded){ S.vy = -h * 1.18; S.grounded = false; S.jumps = 1; sndJump(); }
-  else if (S.jumps < 2){ S.vy = -h * 1.05; S.jumps = 2; sndJump(); }
+  S.jumpBufferT = 0.14;
+  if (S.grounded || S.coyoteT > 0){
+    S.jumpBufferT = 0; S.vy = -h * 1.18; S.grounded = false; S.jumps = 1; S.coyoteT = 0; sndJump();
+  } else if (S.jumps < 2){
+    S.jumpBufferT = 0; S.vy = -h * 1.05; S.jumps = 2; sndJump();
+  }
 }
 function flyUpdate(dt, minY){
   S.wings = lerp(S.wings, S.flying ? 1 : 0, clamp(dt * 4, 0, 1));
@@ -831,7 +1017,7 @@ function flyUpdate(dt, minY){
   if (S.ribbon.length > 24) S.ribbon.shift();
   const k = clamp(dt * 4.5, 0, 1);
   S.ux = lerp(S.ux, S.tx, k); S.uy = lerp(S.uy, S.ty, k);
-  S.ux = clamp(S.ux, unit()*1.4, w - unit()*1.4);
+  S.ux = clamp(S.ux, SAFE.l + unit()*1.4, w - SAFE.r - unit()*1.4);
   S.uy = clamp(S.uy, minY, standY());
   if (Math.abs(S.tx - S.ux) > unit()*0.4) S.face = S.tx > S.ux ? 1 : -1;
   // sagoglitter efter enhörningen
@@ -872,6 +1058,7 @@ function cheerFriends(){
 
 function update(dt){
   S.time += dt;
+  S.idleT += dt;
   if (S.happyT > 0) S.happyT -= dt;
   if (S.wiggleT > 0) S.wiggleT -= dt;
   S.blinkT -= dt;
@@ -895,15 +1082,17 @@ function update(dt){
           const by = b.cover === 'cloud' ? S.clouds[b.cloudIx].fy * h : b.fy * h;
           if (Math.hypot(bx - S.ux, by - S.uy) < unit() * 1.5){
             b.found = true; S.birdsFound++; S.happyT = 0.7; S.birdPopT = S.time;
+            S.idleT = 0;
             sndBird(); buzz(25); confetti(bx, by, 26);
-            if (S.birdsFound >= 6){ S.bigStar = true; S.bigStarT = S.time; sndStar(); }
+            announce('Fågel ' + S.birdsFound + ' av 6 hittad.');
+            if (S.birdsFound >= 6){ S.bigStar = true; S.bigStarT = S.time; sndStar(); announce('Alla fåglar är hittade. Tryck på den stora stjärnan.'); }
           }
         }
       }
       break;
     }
     case 'toSpace': {
-      S.transT += dt / 2.4;
+      S.transT += dt / 1.7;
       S.flap += dt * 14;
       S.uy = lerp(S.uy, -unit() * 3, clamp(dt * 1.8, 0, 1));
       S.ux = lerp(S.ux, w * 0.5, clamp(dt * 2, 0, 1));
@@ -917,14 +1106,16 @@ function update(dt){
         if (st.got) continue;
         if (Math.hypot(st.fx * w - S.ux, st.fy * h - S.uy) < unit() * 1.6){
           st.got = true; S.starsFound++; S.happyT = 0.7; S.starPopT = S.time;
+          S.idleT = 0;
           sndStar(); buzz(25); confetti(st.fx * w, st.fy * h, 22);
+          announce('Stjärna ' + S.starsFound + ' av 10 samlad.');
           if (S.starsFound >= 10) go('toGround');
         }
       }
       break;
     }
     case 'toGround': {
-      S.transT += dt / 2.6;
+      S.transT += dt / 1.9;
       S.flap += dt * 10;
       const hx = w / 2, hy = h * 0.92;
       S.ux = lerp(S.ux, hx, clamp(dt * 2.2, 0, 1));
@@ -935,9 +1126,12 @@ function update(dt){
     }
     case 'ground': {
       if (S.bannerT <= 0){
-        const spd = S.level === 1 ? 0.185 : S.level === 2 ? 0.2 : 0.22;   // skärmbredder/s
+        const baseSpd = S.level === 1 ? 0.185 : S.level === 2 ? 0.2 : 0.22;
+        const spd = baseSpd * (S.assist ? 0.78 : 1);   // hjälpvingar sänker tempot diskret
         S.p += spd * dt;
       }
+      if (S.jumpBufferT > 0) S.jumpBufferT -= dt;
+      if (S.grounded) S.coyoteT = 0.12; else S.coyoteT = Math.max(0, S.coyoteT - dt);
       S.runT = (S.runT || 0) + dt * 2.2;
       S.flap += dt * (S.grounded ? 5 : 14);       // vingarna fladdrar, extra vid hopp
       // hoppfysik
@@ -951,11 +1145,18 @@ function update(dt){
               vx: (rnd()-0.5)*140, vy: -rnd()*70, c: '#e9e4ee', r: 2.5 + rnd()*3, t: 0, life: 0.4 });
         }
         S.uy = standY(); S.vy = 0; S.grounded = true; S.jumps = 0;
+        if (S.jumpBufferT > 0){
+          S.jumpBufferT = 0; S.vy = -h * 1.18; S.grounded = false; S.jumps = 1; sndJump();
+        }
       }
       if (S.invulnT > 0) S.invulnT -= dt;
       if (S.landT > 0) S.landT -= dt;
       if (S.shakeT > 0) S.shakeT -= dt;
       for (const c of S.clouds){ c.fx += 0.01 * dt; if (c.fx > 1.15) c.fx = -0.15; }
+      if (!S.checkpointShown && S.p > S.courseLen * .5){
+        S.checkpointShown = true; S.banner = '⭐ Halvvägs! ⭐'; S.bannerT = 1.2; S.happyT = 1;
+        sndStar(); confetti(w*.5,h*.32,24); announce('Halvvägs till slottet!');
+      }
       // zombisar
       const heroX = w * 0.26;
       for (const z of S.zombies){
@@ -983,7 +1184,12 @@ function update(dt){
           continue;
         }
         if (overlapX && feet > zTop && S.invulnT <= 0){
-          z.hit = true; z.hitT = S.time; S.hearts--; S.invulnT = 1.0;
+          z.hit = true; z.hitT = S.time; S.hearts--; S.misses++;
+          if (S.misses >= 2 && !S.assist){
+            S.assist = 1; S.banner = '✨ 🪽 ✨'; S.bannerT = 1.8;
+            announce('Hjälpvingar visar vägen och gör tempot lugnare.');
+          }
+          S.invulnT = S.assist ? 1.8 : 1.0;
           S.heartPopT = S.time; S.shakeT = 0.22;
           for (let i = 0; i < 10; i++){                     // slajmsplash!
             const a = -Math.PI * rnd();
@@ -992,17 +1198,23 @@ function update(dt){
               r: 3 + rnd()*4, t: 0, life: 0.5 + rnd()*0.3 });
           }
           sndOops(); buzz(70);
-          if (S.hearts <= 0){ go('lose'); }
+          if (S.hearts <= 0){
+            if (!S.rescued){
+              S.rescued = true; S.assist = 2; S.hearts = 3; S.invulnT = 3;
+              S.banner = '🪽 💖 🪽'; S.bannerT = 2.2; sndWings(); confetti(heroX,S.uy,32);
+              announce('En sagofe hjälpte till. Du fick tre nya hjärtan.');
+            } else { go('lose'); return; }
+          }
         }
       }
-      if (S.p >= S.courseLen - 0.55) go('win');
+      if (S.phase === 'ground' && S.p >= S.courseLen - 0.55) go('win');
       break;
     }
     case 'win': {
       S.winConfT += dt;
-      if (S.winConfT > 0.25){
+      if (S.winConfT > (gentleMotion ? 0.9 : 0.25)){
         S.winConfT = 0; confetti(rnd() * w, -10, 5);
-        if (rnd() < 0.3) confetti(w * (0.15 + rnd() * 0.7), h * (0.12 + rnd() * 0.3), 32);  // fyrverkeri
+        if (!gentleMotion && rnd() < 0.3) confetti(w * (0.15 + rnd() * 0.7), h * (0.12 + rnd() * 0.3), 32);  // fyrverkeri
       }
       break;
     }
@@ -1121,11 +1333,14 @@ function render(){
       drawUnicorn(w * 0.75, standY() + bob * 0.2, unit() * 1.2,
         { face: -1, blink: S.blinkT < 0, happy: S.happyT > 0 || Math.sin(S.time) > 0, mane: playerMane() });
       drawPalette();
-      txt('Sagornas värld', w/2, h * 0.2, clamp(w * 0.085, 30, 72), '#ff5c9d', '#ffffff');
-      txt('⭐ 🦄 ⭐', w/2, h * 0.2 + clamp(w*0.085,30,72) * 0.95, clamp(w*0.045, 18, 34), '#fff');
-      drawArrowBtn(w/2, h * 0.62, btnR() * 1.25, '');
-      txt('Nivå ' + S.level, w/2, h * 0.62 - btnR() * 2.0, clamp(w*0.04, 16, 26), '#5d4037', '#fff');
+      const titleSize = clamp(Math.min(w,h) * 0.085, 30, 72);
+      txt('Sagornas värld', w/2, h * 0.2, titleSize, '#ff5c9d', '#ffffff');
+      txt('⭐ 🦄 ⭐', w/2, h * 0.2 + titleSize * 0.95, clamp(titleSize*.52, 18, 34), '#fff');
+      const start = playBtn(); drawArrowBtn(start.x, start.y, start.r, '');
+      txt('Nivå ' + S.level, w/2, start.y - start.r * 1.55, clamp(Math.min(w,h)*0.04, 16, 26), '#5d4037', '#fff');
+      drawIconBtn(menuCalmBtn(), '💗', '#ec7cab', 'Flyg fritt');
       drawMuteBtn();
+      drawComfortBtn();
       break;
     }
     case 'sky': case 'calm': {
@@ -1139,6 +1354,7 @@ function render(){
       if (S.phase === 'calm'){
         drawArrowBtn(w - btnR()*1.1 - SAFE.r, h - btnR()*1.4 - SAFE.b, btnR() * 0.9, '');
       }
+      drawCoach();
       const pb = pauseBtn(); drawHandBtn(pb.x, pb.y, pb.r);
       break;
     }
@@ -1165,6 +1381,7 @@ function render(){
       drawUnicornWorld();
       drawParticles();
       drawStarHUD();
+      drawCoach();
       const pb = pauseBtn(); drawHandBtn(pb.x, pb.y, pb.r);
       break;
     }
@@ -1186,7 +1403,7 @@ function render(){
     }
     case 'ground': case 'lose': {
       ctx.save();
-      if (S.shakeT > 0){
+      if (S.shakeT > 0 && !gentleMotion){
         const m = S.shakeT / 0.22 * 4;
         ctx.translate((rnd() - 0.5) * m * 2, (rnd() - 0.5) * m);
       }
@@ -1203,7 +1420,7 @@ function render(){
         const sx = (z.wx + off - S.p) * w + heroX;
         if (sx > -unit()*3 && sx < w + unit()*3) drawZombie(z, sx, unit());
       }
-      const flash = S.invulnT > 0 && Math.floor(S.time * 12) % 2 === 0;
+      const flash = !gentleMotion && S.invulnT > 0 && Math.floor(S.time * 4) % 2 === 0;
       if (!flash || S.phase === 'lose'){
         let sxq = 1, syq = 1;
         if (!S.grounded){ syq = 1.07; sxq = 0.95; }               // sträcks ut i luften
@@ -1220,6 +1437,7 @@ function render(){
       if (S.phase === 'ground') drawProgress();
       if (S.phase === 'ground'){
         const pb = pauseBtn(); drawHandBtn(pb.x, pb.y, pb.r);
+        drawCoach();
         if (S.bannerT > 0) txt(S.banner, w/2, h * 0.4, clamp(w*0.08, 30, 60), '#ff5c9d', '#fff');
       }
       if (S.phase === 'lose'){
@@ -1251,7 +1469,7 @@ function render(){
       }
       txt('Hurra!', w/2, h * 0.08, clamp(w*0.07, 28, 54), '#ff5c9d', '#fff');
       drawParticles();
-      drawArrowBtn(w * 0.75, h * 0.78, btnR() * 1.15, 'Nästa nivå');
+      const nb = winNextBtn(); drawArrowBtn(nb.x, nb.y, nb.r, 'Nästa nivå');
       // lugnt läge-knapp (rosa moln med hjärta)
       const cb = calmBtn();
       ctx.fillStyle = '#f8bbd0'; circle(cb.x, cb.y, cb.r);
@@ -1265,15 +1483,18 @@ function render(){
 
   if (S.paused){
     ctx.fillStyle = 'rgba(20,30,60,.55)'; ctx.fillRect(0, 0, w, h);
-    drawUnicorn(w/2, h * 0.27, unit() * 0.95,        // förhandsvisning som byter färg direkt
+    drawUnicorn(w/2, h * 0.18, unit() * 0.95,        // förhandsvisning som byter färg direkt
       { face: 1, happy: true, wings: 0.6, flap: S.time * 3, mane: playerMane() });
-    drawArrowBtn(w/2, h/2, btnR() * 1.4, '');
+    const rb = resumeBtn(); drawArrowBtn(rb.x, rb.y, rb.r, 'Fortsätt');
+    drawIconBtn(homeBtn(), '🏠', '#42a5f5', 'Hem');
+    drawIconBtn(restartBtn(), '🔄', '#ff9f43', 'Börja om');
     drawPalette();
     drawMuteBtn();
+    drawComfortBtn();
     drawParticles();
   }
 }
-function calmBtn(){ return { x: w * 0.25, y: h * 0.78, r: btnR() * 1.15 }; }
+function calmBtn(){ const r = btnR() * 1.05; return { x: w * 0.28, y: Math.min(h * 0.76, h - SAFE.b - r * 1.75), r }; }
 function paletteDots(){
   const r = clamp(w * 0.032, 15, 26), gap = r * 2.8;
   const x0 = w/2 - gap * (MANES.length - 1) / 2, y = h - r * 2 - SAFE.b;
@@ -1290,32 +1511,50 @@ function drawPalette(){
 }
 
 /* ---------------- inmatning ---------------- */
-function onDown(px, py){
+function restartCurrent(){
+  const phase = S.phase === 'ground' || S.phase === 'lose' ? 'ground' :
+    S.phase === 'calm' ? 'calm' : 'sky';
+  S.paused = false; sndTap(); go(phase);
+}
+function syncA11y(){
+  const active = ['sky','space','ground','calm'].includes(S.phase);
+  document.getElementById('a11yStart').hidden = !['menu','lose','win'].includes(S.phase);
+  document.getElementById('a11yPause').hidden = !active;
+  document.getElementById('a11yHome').hidden = S.phase === 'menu';
+  document.getElementById('a11yCalm').hidden = !['menu','win'].includes(S.phase);
+}
+function onDown(px, py, pointerType){
   audioInit();
+  S.idleT = 0;
   if (S.paused){
     if (hitCircle(px, py, muteBtn())){ toggleMute(); return; }
+    if (hitCircle(px, py, comfortBtn())){ toggleGentle(); return; }
     const dot = paletteDots().find(d => Math.hypot(px - d.x, py - d.y) < d.r * 1.9);
     if (dot){                                        // byt färg mitt i spelet!
-      maneIx = dot.i; localStorage.setItem('sagovarld_mane', String(maneIx));
+      maneIx = dot.i; store.set('sagovarld_mane', String(maneIx));
       sndStar(); buzz(15); confetti(dot.x, dot.y, 10);
       return;
     }
-    if (hitCircle(px, py, { x: w/2, y: h/2, r: btnR() * 1.4 })){ S.paused = false; sndTap(); }
+    if (hitCircle(px, py, homeBtn())){ sndTap(); S.paused = false; go('menu'); return; }
+    if (hitCircle(px, py, restartBtn())){ restartCurrent(); return; }
+    if (hitCircle(px, py, resumeBtn())){ S.paused = false; sndTap(); announce('Spelet fortsätter.'); syncA11y(); }
     return;
   }
   const pb = pauseBtn();
   switch (S.phase){
     case 'menu': {
       if (hitCircle(px, py, muteBtn())){ toggleMute(); break; }
+      if (hitCircle(px, py, comfortBtn())){ toggleGentle(); break; }
+      if (hitCircle(px, py, menuCalmBtn())){ sndTap(); go('calm'); break; }
       const dot = paletteDots().find(d => Math.hypot(px - d.x, py - d.y) < d.r * 1.9);
       if (dot){                                   // måla din enhörning
-        maneIx = dot.i; localStorage.setItem('sagovarld_mane', String(maneIx));
+        maneIx = dot.i; store.set('sagovarld_mane', String(maneIx));
         sndTap(); confetti(dot.x, dot.y, 8); break;
       }
       if (Math.hypot(px - w*0.75, py - standY()) < unit() * 2.4){   // kittla enhörningen
         S.happyT = 1; tickle(px, py); break;
       }
-      if (hitCircle(px, py, { x: w/2, y: h * 0.62, r: btnR() * 1.25 })){ sndTap(); go('sky'); }
+      if (hitCircle(px, py, playBtn())){ sndTap(); go('sky'); }
       break;
     }
     case 'sky':
@@ -1328,22 +1567,22 @@ function onDown(px, py){
         else S.wiggleT = 0.6;                     // ledtråd: hjärtat vickar
       } else {
         const f = friendAt(px, py); if (f){ f.cheer = 1; tickle(px, py); }
-        S.tx = px; S.ty = py;
+        setFlyTarget(px, py, pointerType);
       }
       break;
     case 'space':
       if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); return; }
-      S.tx = px; S.ty = py;
+      setFlyTarget(px, py, pointerType);
       break;
     case 'ground':
       if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); return; }
-      if (S.bannerT <= 0) jump();
+      S.bannerT = 0; jump();
       break;
     case 'lose':
       if (hitCircle(px, py, { x: w/2, y: h * 0.62, r: btnR() * 1.3 })){ sndTap(); go('ground'); }
       break;
     case 'win':
-      if (hitCircle(px, py, { x: w * 0.75, y: h * 0.78, r: btnR() * 1.15 })){
+      if (hitCircle(px, py, winNextBtn())){
         sndTap(); S.level = loadLevel(); go('sky');
       } else if (hitCircle(px, py, calmBtn())){ sndTap(); go('calm'); }
       break;
@@ -1358,25 +1597,54 @@ function onDown(px, py){
         else S.wiggleT = 0.6;
       } else {
         const f = friendAt(px, py); if (f){ f.cheer = 1; tickle(px, py); }
-        S.tx = px; S.ty = py;
+        setFlyTarget(px, py, pointerType);
       }
       break;
   }
 }
-function onMove(px, py){
+function onMove(px, py, pointerType){
   if ((S.phase === 'sky' || S.phase === 'space' || S.phase === 'calm') && S.flying && !S.paused){
-    S.tx = px; S.ty = py;
+    setFlyTarget(px, py, pointerType);
   }
 }
-CV.addEventListener('pointerdown', e => { e.preventDefault(); onDown(e.clientX, e.clientY); }, { passive: false });
-CV.addEventListener('pointermove', e => { onMove(e.clientX, e.clientY); });
+CV.addEventListener('pointerdown', e => {
+  if (!e.isPrimary) return;
+  e.preventDefault(); S.activePointer = e.pointerId;
+  try { CV.setPointerCapture(e.pointerId); } catch(err){}
+  onDown(e.clientX, e.clientY, e.pointerType);
+}, { passive: false });
+CV.addEventListener('pointermove', e => {
+  if (!e.isPrimary || (e.pointerType !== 'mouse' && e.pointerId !== S.activePointer)) return;
+  onMove(e.clientX, e.clientY, e.pointerType);
+});
+function releasePointer(e){ if (e.pointerId === S.activePointer) S.activePointer = null; }
+CV.addEventListener('pointerup', releasePointer);
+CV.addEventListener('pointercancel', releasePointer);
+CV.addEventListener('lostpointercapture', releasePointer);
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (e.code === 'Escape' || e.code === 'KeyP'){
+    if (['sky','space','ground','calm'].includes(S.phase)){ S.paused = !S.paused; sndTap(); syncA11y(); }
+    return;
+  }
+  if (e.code === 'KeyM'){ toggleMute(); return; }
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code) && ['sky','space','calm'].includes(S.phase)){
+    e.preventDefault(); audioInit();
+    if (!S.flying) deployWings();
+    const step = unit()*2.4;
+    if (e.code === 'ArrowLeft') S.tx -= step;
+    if (e.code === 'ArrowRight') S.tx += step;
+    if (e.code === 'ArrowUp') S.ty -= step;
+    if (e.code === 'ArrowDown') S.ty += step;
+    S.tx = clamp(S.tx, SAFE.l+unit()*1.4, w-SAFE.r-unit()*1.4);
+    S.ty = clamp(S.ty, unit()*1.2, standY()); S.idleT = 0;
+    return;
+  }
   if (e.code === 'Space' || e.code === 'Enter'){
     e.preventDefault(); audioInit();
     if (S.paused){ S.paused = false; return; }
     if (S.phase === 'menu') go('sky');
-    else if (S.phase === 'ground'){ if (S.bannerT <= 0) jump(); }
+    else if (S.phase === 'ground'){ S.bannerT = 0; jump(); }
     else if (S.phase === 'lose') go('ground');
     else if (S.phase === 'win'){ S.level = loadLevel(); go('sky'); }
     else if ((S.phase === 'sky' || S.phase === 'calm') && !S.flying) deployWings();
@@ -1385,9 +1653,35 @@ window.addEventListener('keydown', e => {
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('gesturestart', e => e.preventDefault());
 
+document.getElementById('a11yStart').addEventListener('click', () => {
+  audioInit();
+  if (S.phase === 'menu') go('sky');
+  else if (S.phase === 'lose') go('ground');
+  else if (S.phase === 'win'){ S.level = loadLevel(); go('sky'); }
+});
+document.getElementById('a11yPause').addEventListener('click', () => {
+  if (['sky','space','ground','calm'].includes(S.phase)){
+    S.paused = !S.paused; if (!S.paused) audioInit(); syncA11y();
+    announce(S.paused ? 'Spelet är pausat.' : 'Spelet fortsätter.');
+  }
+});
+document.getElementById('a11yMute').addEventListener('click', toggleMute);
+document.getElementById('a11yHome').addEventListener('click', () => go('menu'));
+document.getElementById('a11yCalm').addEventListener('click', () => { audioInit(); go('calm'); });
+document.getElementById('a11yComfort').addEventListener('click', toggleGentle);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden){
+    if (['sky','space','ground','calm'].includes(S.phase)) S.paused = true;
+    if (AC && AC.state === 'running') AC.suspend();
+  }
+  last = 0; syncA11y();
+});
+
 /* ---------------- huvudloop ---------------- */
 makeClouds(); makeFriends(false);   // så att menyn har moln & kompisar direkt
 let last = 0;
+syncA11y();
 function loop(ts){
   if (w !== window.innerWidth || h !== window.innerHeight) resize();
   const dt = Math.min(0.033, (ts - last) / 1000 || 0.016);

@@ -8,7 +8,13 @@ Ett sagospel för barn (5–9 år), designat av en 6-åring. Hjälp den lilla en
 
 **Spela här:** https://vediadrom.github.io/sagornas-varld/
 
-Funkar på mobil, surfplatta och dator (tryck på skärmen eller använd mellanslag för att hoppa).
+Funkar på mobil, surfplatta och dator. Animerade händer visar hur varje del fungerar utan
+att barnet behöver kunna läsa. Dra eller använd piltangenterna för att flyga; tryck på
+skärmen eller använd mellanslag för att hoppa.
+
+Spelet har också en lugn flygtur direkt från start, ett läge med mindre rörelse, barnvänlig
+hjälp som aktiveras automatiskt när något känns svårt samt tillgängliga tangentbords- och
+skärmläsarkontroller.
 
 ## Installera som app 📱
 
@@ -19,6 +25,7 @@ Då får du en egen enhörningsikon, spelet startar i helskärm och funkar även
 ## Teknik
 
 Spelet bor i en enda `index.html` — all grafik ritas med canvas, alla ljud görs med Web Audio API.
-Inga externa beroenden, inga byggsteg. Nivåframsteg sparas i webbläsarens localStorage.
+Inga externa beroenden, inga byggsteg. Nivåframsteg sparas i webbläsarens localStorage
+med en säker reservlösning för webbläsare som blockerar lagring.
 Därtill: `manifest.webmanifest` + `sw.js` (offline/installation), hemskärmsikoner,
 vibrationsfeedback, ljud av/på-knapp och safe area-hantering för mobiler med notch.
