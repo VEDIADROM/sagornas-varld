@@ -98,6 +98,9 @@ const sndWhoosh = () => tone(200, .8, 'sine', .1, 0, 900);
 const sndWin    = () => { [523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,.22,'triangle',.13,i*.16)); };
 const sndAlmost = () => { [523,494,440].forEach((f,i)=>tone(f,.25,'sine',.1,i*.18)); };
 const sndLand   = () => tone(420, .16, 'sine', .06, 0, -220);
+const sndGiggle = () => { tone(700,.07,'sine',.12); tone(920,.07,'sine',.12,.08); tone(780,.1,'sine',.12,.16,180); };
+const sndBoing  = () => tone(240, .25, 'sine', .15, 0, 480);
+const sndPop    = n  => tone(420 + Math.min(n,8)*70, .07, 'sine', .13);
 
 /* mjuk bakgrundsmusik per fas (mycket låg volym) */
 let musicTimer = null, nextNote = 0, noteIx = 0;
@@ -141,7 +144,21 @@ const S = {
   banner: '', bannerT: 0,
   transT: 0, particles: [], trailT: 0, winConfT: 0,
   ribbon: [], landT: 0, shakeT: 0, birdPopT: -9, starPopT: -9, heartPopT: -9,
+  takeoffT: 0,
+  bubbles: [], bubbleT: 3, popChain: 0, popT: -9, hats: 0,
 };
+/* manfärger — "måla din enhörning" */
+const MANES = [
+  { main:'#ff8fc6', light:'#ffaed6', pale:'#ffc7e2' },   // rosa
+  { main:'#8ec9ff', light:'#b3dbff', pale:'#d6ecff' },   // blå
+  { main:'#b39ddb', light:'#cbbde8', pale:'#e2d9f3' },   // lila
+  { main:'#8fd08f', light:'#b5e3a8', pale:'#d4f0c9' },   // grön
+  { main:'#ffd54f', light:'#ffe38a', pale:'#fff0bd' },   // gul
+  { main:'#ff8a65', light:'#ffab91', pale:'#ffccbc' },   // orange
+];
+let maneIx = parseInt(localStorage.getItem('sagovarld_mane') || '0', 10);
+if (isNaN(maneIx) || maneIx < 0 || maneIx >= MANES.length) maneIx = 0;
+const playerMane = () => MANES[maneIx];
 window.G = S; // för test/felsökning
 
 function makeClouds(){
@@ -206,6 +223,7 @@ function makeZombies(){
 
 function go(phase){
   S.phase = phase; S.transT = 0; S.particles = []; S.ribbon = [];
+  S.bubbles = []; S.bubbleT = 2.5; S.takeoffT = 0;
   if (phase === 'sky' || phase === 'calm'){
     makeClouds(); makeFriends(phase === 'calm');
     if (phase === 'sky') makeBirds();
@@ -221,7 +239,7 @@ function go(phase){
   if (phase === 'toGround'){ sndWhoosh(); }
   if (phase === 'ground'){
     makeZombies(); S.p = 0; S.vy = 0; S.grounded = true; S.jumps = 0;
-    S.hearts = 10; S.invulnT = 0; S.wings = 0; S.flying = false;
+    S.hearts = 10; S.invulnT = 0; S.wings = 0; S.flying = false; S.hats = 0;
     S.uy = standY(); S.banner = 'Hoppa!'; S.bannerT = 1.6;
     makeClouds();
   }
@@ -246,6 +264,37 @@ function updParticles(dt){
     const p = S.particles[i];
     p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt;
     if (p.t > p.life) S.particles.splice(i, 1);
+  }
+}
+function updBubbles(dt){
+  S.bubbleT -= dt;
+  if (S.bubbleT <= 0){
+    S.bubbleT = 5 + rnd() * 5;
+    const bx = 0.15 + rnd() * 0.7, by = 0.15 + rnd() * 0.4;
+    for (let i = 0; i < 5; i++)
+      S.bubbles.push({ x: (bx + (rnd()-0.5)*0.14) * w, y: (by + (rnd()-0.5)*0.14) * h,
+        r: unit() * (0.28 + rnd() * 0.3), vy: -8 - rnd()*12, wob: rnd()*7, t: 0 });
+  }
+  for (let i = S.bubbles.length - 1; i >= 0; i--){
+    const b = S.bubbles[i];
+    b.t += dt; b.y += b.vy * dt; b.x += Math.sin(S.time*2 + b.wob) * 12 * dt;
+    if (b.t > 9 || b.y < -b.r){ S.bubbles.splice(i, 1); continue; }
+    if (Math.hypot(b.x - S.ux, b.y - S.uy) < b.r + unit()*0.9){   // popp!
+      S.bubbles.splice(i, 1);
+      if (S.time - S.popT > 1.5) S.popChain = 0;
+      S.popT = S.time; sndPop(S.popChain++); buzz(10);
+      for (let j = 0; j < 6; j++)
+        S.particles.push({ x: b.x, y: b.y, vx: (rnd()-0.5)*160, vy: (rnd()-0.5)*160,
+          c: 'rgba(255,255,255,.9)', r: 2 + rnd()*2, t: 0, life: 0.35 });
+    }
+  }
+}
+function drawBubbles(){
+  for (const b of S.bubbles){
+    ctx.fillStyle = 'rgba(255,255,255,.14)';
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ell(b.x - b.r*0.35, b.y - b.r*0.4, b.r*0.2, b.r*0.12, -0.6);
   }
 }
 function drawRainbow(cx, cy, r0, thick, alpha){
@@ -280,6 +329,7 @@ function drawParticles(){
     ctx.globalAlpha = clamp(1 - p.t / p.life, 0, 1);
     ctx.fillStyle = p.c;
     if (p.star){ starPath(p.x, p.y, p.r * 1.6, p.t * 4); ctx.fill(); }
+    else if (p.heart){ heartPath(p.x, p.y, p.r * 1.6); ctx.fill(); }
     else { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill(); }
   }
   ctx.globalAlpha = 1;
@@ -332,13 +382,14 @@ function drawWing(x, y, s, flapT, front){
 }
 function drawUnicorn(x, y, u, o){
   o = o || {}; const face = o.face || 1;
+  const M = o.mane || MANES[0];
   ctx.save(); ctx.translate(x, y); ctx.scale(face * (o.sx || 1), o.sy || 1);
   const wings = o.wings || 0, flap = o.flap || 0;
   if (wings > 0.03) drawWing(-0.2*u, -0.55*u, u * (0.35 + 0.65*wings), flap, false);
   // svans
-  ctx.fillStyle = '#ff8fc6'; circle(-1.28*u, -0.12*u, 0.27*u);
-  ctx.fillStyle = '#ffaed6'; circle(-1.42*u, 0.12*u, 0.21*u);
-  ctx.fillStyle = '#ffc7e2'; circle(-1.3*u, 0.34*u, 0.16*u);
+  ctx.fillStyle = M.main; circle(-1.28*u, -0.12*u, 0.27*u);
+  ctx.fillStyle = M.light; circle(-1.42*u, 0.12*u, 0.21*u);
+  ctx.fillStyle = M.pale; circle(-1.3*u, 0.34*u, 0.16*u);
   // ben
   for (let i = 0; i < 4; i++){
     const lx = [-0.72, -0.34, 0.42, 0.78][i];
@@ -361,10 +412,10 @@ function drawUnicorn(x, y, u, o){
   // öra
   ctx.fillStyle = '#ffffff';
   ctx.beginPath(); ctx.moveTo(0.86*u, -1.25*u); ctx.lineTo(0.98*u, -1.52*u); ctx.lineTo(1.08*u, -1.25*u); ctx.closePath(); ctx.fill();
-  // man (rosa)
-  ctx.fillStyle = '#ff8fc6';
+  // man (spelarens valda färg)
+  ctx.fillStyle = M.main;
   circle(0.72*u, -1.24*u, 0.22*u); circle(0.56*u, -0.95*u, 0.23*u); circle(0.45*u, -0.62*u, 0.22*u);
-  ctx.fillStyle = '#ffaed6';
+  ctx.fillStyle = M.light;
   circle(0.62*u, -1.1*u, 0.16*u); circle(0.48*u, -0.78*u, 0.16*u);
   // horn (gyllene)
   ctx.save(); ctx.translate(1.16*u, -1.3*u); ctx.rotate(-0.12);
@@ -376,6 +427,17 @@ function drawUnicorn(x, y, u, o){
   ctx.beginPath(); ctx.moveTo(-0.06*u, -0.15*u); ctx.lineTo(0.07*u, -0.22*u);
   ctx.moveTo(-0.04*u, -0.34*u); ctx.lineTo(0.05*u, -0.4*u); ctx.stroke();
   ctx.restore();
+  // hatt-torn (insamlade zombiehattar)
+  if (o.hats){
+    for (let i = 0; i < Math.min(o.hats, 8); i++){
+      ctx.save();
+      ctx.translate(0.85*u + Math.sin(S.time*2.5 + i) * 0.03*u*i, (-1.58 - i*0.26)*u);
+      ctx.rotate(Math.sin(S.time*2 + i) * 0.07);
+      ctx.fillStyle = '#6d4c41'; ell(0, 0.07*u, 0.34*u, 0.08*u); rr(-0.2*u, -0.22*u, 0.4*u, 0.28*u, 0.07*u);
+      ctx.fillStyle = '#ffca28'; rr(-0.2*u, -0.03*u, 0.4*u, 0.07*u, 0.02*u);
+      ctx.restore();
+    }
+  }
   // krona
   if (o.crown){
     ctx.fillStyle = '#ffca28';
@@ -539,6 +601,8 @@ function drawZombie(z, sx, u){
   const zu = u * 0.85, gy = groundY();
   const t = z.hit ? S.time - z.hitT : 0;
   ctx.save(); ctx.translate(sx, gy - zu * 1.1);
+  const bt = S.time - (z.boingT || -9);
+  if (bt < 0.35){ const k = 1 - bt/0.35; ctx.scale(1 + 0.25*k, 1 - 0.3*k); ctx.translate(0, zu*0.3*k); }  // glad studsmatta-squash
   if (z.hit) ctx.rotate(z.tipDir * clamp(t * 2.2, 0, 1) * 1.15);
   else ctx.rotate(Math.sin(S.time * 3 + z.seed) * 0.06);
   ctx.fillStyle = '#79b96d';
@@ -562,19 +626,21 @@ function drawZombie(z, sx, u){
   ctx.strokeStyle = '#4c7a44'; ctx.lineWidth = 0.06*zu; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.arc(0, -0.58*zu, 0.22*zu, 0.4, Math.PI - 0.4); ctx.stroke();  // leende
   ctx.restore();
-  // hatt (kan flyga av)
-  let hx = sx, hy = gy - zu * 1.1 - 1.25 * zu, hr = 0;
-  if (z.hit){
-    const ht = Math.min(t, 0.8);
-    hx += z.tipDir * -1 * ht * zu * 1.6;
-    hy += -ht * zu * 3 + ht * ht * zu * 5.2;
-    hr = t * 5 * z.tipDir;
-    if (t > 0.8) { hy = gy - 0.18 * zu; hr = z.tipDir * 2.6; }
+  // hatt (kan flyga av — och plockas upp av enhörningen!)
+  if (!z.hatTaken){
+    let hx = sx, hy = gy - zu * 1.1 - 1.25 * zu, hr = 0;
+    if (z.hit){
+      const ht = Math.min(t, 0.8);
+      hx += z.tipDir * -1 * ht * zu * 1.6;
+      hy += -ht * zu * 3 + ht * ht * zu * 5.2;
+      hr = t * 5 * z.tipDir;
+      if (t > 0.8) { hy = gy - 0.18 * zu; hr = z.tipDir * 2.6; }
+    } else if (bt < 0.5){ hy -= Math.sin(bt / 0.5 * Math.PI) * zu * 0.9; hr = bt * 9; }  // hatten snurrar vid studs
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(hr);
+    ctx.fillStyle = '#6d4c41'; ell(0, 0.1*zu, 0.5*zu, 0.12*zu); rr(-0.3*zu, -0.32*zu, 0.6*zu, 0.42*zu, 0.1*zu);
+    ctx.fillStyle = '#ffca28'; rr(-0.3*zu, -0.02*zu, 0.6*zu, 0.1*zu, 0.03*zu);
+    ctx.restore();
   }
-  ctx.save(); ctx.translate(hx, hy); ctx.rotate(hr);
-  ctx.fillStyle = '#6d4c41'; ell(0, 0.1*zu, 0.5*zu, 0.12*zu); rr(-0.3*zu, -0.32*zu, 0.6*zu, 0.42*zu, 0.1*zu);
-  ctx.fillStyle = '#ffca28'; rr(-0.3*zu, -0.02*zu, 0.6*zu, 0.1*zu, 0.03*zu);
-  ctx.restore();
   // pratbubbla
   if (z.hit && t < 1.5){
     const bx = sx, by = gy - zu * 3.1;
@@ -677,7 +743,8 @@ function drawProgress(){
 /* ---------------- fysik & logik ---------------- */
 function deployWings(){
   S.flying = true; sndWings();
-  S.ty = S.uy - h * 0.25; S.tx = S.ux;
+  S.takeoffT = 1.0;                      // lyftfas: kan inte råka landa direkt igen
+  S.ty = S.uy - h * 0.3; S.tx = S.ux;
 }
 function jump(){
   if (S.grounded){ S.vy = -h * 1.18; S.grounded = false; S.jumps = 1; sndJump(); }
@@ -687,6 +754,10 @@ function flyUpdate(dt, minY){
   S.wings = lerp(S.wings, S.flying ? 1 : 0, clamp(dt * 4, 0, 1));
   S.flap += dt * (S.flying ? 9 : 2);
   if (!S.flying){ if (S.ribbon.length) S.ribbon.splice(0, 2); return; }
+  if (S.takeoffT > 0){
+    S.takeoffT -= dt;
+    S.ty = Math.min(S.ty, standY() - h * 0.22);   // under lyftfasen stiger den alltid
+  }
   S.ribbon.push({ x: S.ux - S.face * unit() * 1.2, y: S.uy - unit() * 0.05 });
   if (S.ribbon.length > 24) S.ribbon.shift();
   const k = clamp(dt * 4.5, 0, 1);
@@ -704,6 +775,7 @@ function flyUpdate(dt, minY){
   }
 }
 function landCheck(){
+  if (S.takeoffT > 0) return;            // hinner alltid lyfta innan landning kan ske
   if (S.flying && S.ty >= standY() - unit()*0.3 && S.uy >= standY() - unit()*0.35){
     S.flying = false; S.uy = standY();   // vingarna fälls in automatiskt
     sndLand();
@@ -711,6 +783,16 @@ function landCheck(){
       S.particles.push({ x: S.ux + (rnd()-0.5)*unit()*1.6, y: groundY() - 4,
         vx: (rnd()-0.5)*120, vy: -rnd()*60, c: '#e9e4ee', r: 2.5 + rnd()*3, t: 0, life: 0.4 });
   }
+}
+function tickle(x, y){
+  sndGiggle(); buzz(15);
+  for (let i = 0; i < 7; i++)
+    S.particles.push({ x: x + (rnd()-0.5)*unit(), y: y - rnd()*unit()*0.8,
+      vx: (rnd()-0.5)*80, vy: -50 - rnd()*90, c: i % 2 ? '#ff5c8a' : '#ff8fc6',
+      r: 4 + rnd()*3, t: 0, life: 0.9, heart: true });
+}
+function friendAt(px, py){
+  return S.friends.find(f => Math.hypot(f.fx * w - px, (groundY() - unit()*0.8) - py) < unit() * 1.4);
 }
 function cheerFriends(){
   for (const f of S.friends){
@@ -735,6 +817,7 @@ function update(dt){
       flyUpdate(dt, unit() * 1.5);
       landCheck();
       cheerFriends();
+      updBubbles(dt);
       for (const c of S.clouds){ c.fx += c.drift * dt; if (c.fx > 1.15) c.fx = -0.15; }
       if (S.flying){
         for (const b of S.birds){
@@ -760,6 +843,7 @@ function update(dt){
     }
     case 'space': {
       flyUpdate(dt, unit() * 1.2);
+      updBubbles(dt);
       for (const st of S.stars){
         if (st.got) continue;
         if (Math.hypot(st.fx * w - S.ux, st.fy * h - S.uy) < unit() * 1.6){
@@ -786,6 +870,7 @@ function update(dt){
         S.p += spd * dt;
       }
       S.runT = (S.runT || 0) + dt * 2.2;
+      S.flap += dt * (S.grounded ? 5 : 14);       // vingarna fladdrar, extra vid hopp
       // hoppfysik
       S.vy += h * 2.3 * dt;
       S.uy += S.vy * dt;
@@ -805,13 +890,29 @@ function update(dt){
       // zombisar
       const heroX = w * 0.26;
       for (const z of S.zombies){
-        const off = z.pace ? Math.sin(S.time * z.spd + z.seed) * z.range : 0;
+        const off = z.pace && !z.hit ? Math.sin(S.time * z.spd + z.seed) * z.range : 0;
         const sx = (z.wx + off - S.p) * w + heroX;
-        if (z.hit) continue;
         const zu = unit() * 0.85;
+        // plocka upp tappad hatt från marken
+        if (z.hit && !z.hatTaken && S.time - z.hitT > 0.85){
+          const hx = sx - z.tipDir * 1.28 * zu;
+          if (Math.abs(hx - heroX) < unit() * 0.9 && S.uy > standY() - unit()){
+            z.hatTaken = true; S.hats++;
+            sndStar(); buzz(15); confetti(hx, groundY() - zu * 0.4, 10);
+          }
+        }
+        if (z.hit) continue;
         const feet = S.uy + unit() * 1.18;
         const zTop = groundY() - zu * 1.6;   // strax över zombiens huvud räknas som "över"
-        if (Math.abs(sx - heroX) < (unit() * 0.7 + zu * 0.7) * 0.55 && feet > zTop && S.invulnT <= 0){
+        const overlapX = Math.abs(sx - heroX) < (unit() * 0.7 + zu * 0.7) * 0.55;
+        if (overlapX && S.vy > 60 && feet < zTop + zu * 0.6 && feet > zTop - zu * 0.4){
+          // snäll huvudstuds — zombien blir en fnittrig studsmatta!
+          S.vy = -h * 0.95; S.jumps = 1; z.boingT = S.time;
+          sndBoing(); sndGiggle(); buzz(20);
+          confetti(sx, zTop, 12);
+          continue;
+        }
+        if (overlapX && feet > zTop && S.invulnT <= 0){
           z.hit = true; z.hitT = S.time; S.hearts--; S.invulnT = 1.0;
           S.heartPopT = S.time; S.shakeT = 0.22;
           for (let i = 0; i < 10; i++){                     // slajmsplash!
@@ -839,6 +940,7 @@ function update(dt){
       flyUpdate(dt, unit() * 1.5);
       landCheck();
       cheerFriends();
+      updBubbles(dt);
       for (const c of S.clouds){ c.fx += c.drift * dt; if (c.fx > 1.15) c.fx = -0.15; }
       break;
     }
@@ -872,7 +974,7 @@ function drawUnicornWorld(o){
   const blink = S.blinkT < 0;
   drawUnicorn(S.ux, S.uy, unit(), Object.assign({
     face: S.face, wings: S.wings, flap: S.flap,
-    blink, happy: S.happyT > 0,
+    blink, happy: S.happyT > 0, mane: playerMane(),
   }, o || {}));
 }
 function drawSkyScene(withBirds){
@@ -946,16 +1048,19 @@ function render(){
     case 'menu': {
       drawSkyScene(false);
       const bob = Math.sin(S.time * 2) * 6;
-      drawUnicorn(w * 0.75, standY() + bob * 0.2, unit() * 1.2, { face: -1, blink: S.blinkT < 0, happy: true });
+      drawUnicorn(w * 0.75, standY() + bob * 0.2, unit() * 1.2,
+        { face: -1, blink: S.blinkT < 0, happy: S.happyT > 0 || Math.sin(S.time) > 0, mane: playerMane() });
+      drawPalette();
       txt('Sagornas värld', w/2, h * 0.2, clamp(w * 0.085, 30, 72), '#ff5c9d', '#ffffff');
       txt('⭐ 🦄 ⭐', w/2, h * 0.2 + clamp(w*0.085,30,72) * 0.95, clamp(w*0.045, 18, 34), '#fff');
       drawArrowBtn(w/2, h * 0.62, btnR() * 1.25, '');
-      txt('Nivå ' + S.level, w/2, h * 0.62 + btnR() * 2.1, clamp(w*0.04, 16, 26), '#5d4037', '#fff');
+      txt('Nivå ' + S.level, w/2, h * 0.62 - btnR() * 2.0, clamp(w*0.04, 16, 26), '#5d4037', '#fff');
       drawMuteBtn();
       break;
     }
     case 'sky': case 'calm': {
       drawSkyScene(S.phase === 'sky');
+      drawBubbles();
       drawRibbon();
       drawUnicornWorld();
       if (!S.flying && S.wings < 0.2) drawHeartBtn();
@@ -985,6 +1090,7 @@ function render(){
         ctx.fillStyle = '#fff59d'; starPath(st.fx * w, by, unit() * 0.3 * p2, st.seed); ctx.fill();
         ctx.restore();
       }
+      drawBubbles();
       drawRibbon();
       drawUnicornWorld();
       drawParticles();
@@ -1033,9 +1139,10 @@ function render(){
         if (!S.grounded){ syq = 1.07; sxq = 0.95; }               // sträcks ut i luften
         if (S.landT > 0){ const k = S.landT / 0.14; syq = 1 - 0.16*k; sxq = 1 + 0.14*k; }  // trycks ihop vid landning
         drawUnicorn(heroX, S.uy + (syq < 1 ? unit()*(1-syq)*1.2 : 0), unit(), {
-          face: 1, wings: 0, run: S.grounded ? S.runT : null,
+          face: 1, wings: S.grounded ? 0.35 : 1, flap: S.flap,
+          run: S.grounded ? S.runT : null,
           blink: S.blinkT < 0, happy: S.happyT > 0, sx: sxq, sy: syq,
-          slime: 10 - S.hearts,
+          slime: 10 - S.hearts, hats: S.hats, mane: playerMane(),
         });
       }
       drawParticles();
@@ -1061,7 +1168,10 @@ function render(){
       drawCastle(w/2, gy, Math.min(w, h) / 520 + 0.4);
       ctx.fillStyle = '#5c5f66'; ctx.fillRect(0, gy, w, h - gy);
       for (const f of S.friends){ f.cheer = 1; drawFriend(f); }                     // kompisarna jublar
-      drawUnicorn(w/2, gy - unit() * 1.3, unit() * 1.25, { face: 1, crown: true, happy: true });
+      drawUnicorn(w/2, gy - unit() * 1.3, unit() * 1.25, {
+        face: 1, crown: true, happy: true, wings: 0.5, flap: S.time * 2,
+        hats: S.hats, mane: playerMane(),
+      });
       // samlade stjärnor
       const s = clamp(w / 30, 10, 20), gap = s * 2.5, x0 = w/2 - gap * 4.5;
       for (let i = 0; i < 10; i++){
@@ -1090,6 +1200,20 @@ function render(){
   }
 }
 function calmBtn(){ return { x: w * 0.25, y: h * 0.78, r: btnR() * 1.15 }; }
+function paletteDots(){
+  const r = clamp(w * 0.032, 15, 26), gap = r * 2.8;
+  const x0 = w/2 - gap * (MANES.length - 1) / 2, y = h - r * 2 - SAFE.b;
+  return MANES.map((m, i) => ({ x: x0 + i * gap, y, r, i }));
+}
+function drawPalette(){
+  for (const d of paletteDots()){
+    const sel = d.i === maneIx;
+    const rr2 = d.r * (sel ? 1.25 : 1) * (sel ? 1 + Math.sin(S.time*4)*0.05 : 1);
+    if (sel){ ctx.fillStyle = '#ffffff'; circle(d.x, d.y, rr2 + 4); }
+    ctx.fillStyle = MANES[d.i].main; circle(d.x, d.y, rr2);
+    ctx.fillStyle = MANES[d.i].light; circle(d.x - rr2*0.3, d.y - rr2*0.3, rr2*0.35);
+  }
+}
 
 /* ---------------- inmatning ---------------- */
 function onDown(px, py){
@@ -1101,17 +1225,31 @@ function onDown(px, py){
   }
   const pb = pauseBtn();
   switch (S.phase){
-    case 'menu':
+    case 'menu': {
       if (hitCircle(px, py, muteBtn())){ toggleMute(); break; }
+      const dot = paletteDots().find(d => Math.hypot(px - d.x, py - d.y) < d.r * 1.9);
+      if (dot){                                   // måla din enhörning
+        maneIx = dot.i; localStorage.setItem('sagovarld_mane', String(maneIx));
+        sndTap(); confetti(dot.x, dot.y, 8); break;
+      }
+      if (Math.hypot(px - w*0.75, py - standY()) < unit() * 2.4){   // kittla enhörningen
+        S.happyT = 1; tickle(px, py); break;
+      }
       if (hitCircle(px, py, { x: w/2, y: h * 0.62, r: btnR() * 1.25 })){ sndTap(); go('sky'); }
       break;
+    }
     case 'sky':
       if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); return; }
       if (S.bigStar && hitCircle(px, py, bigStarBtn())){ sndStar(); go('toSpace'); return; }
       if (!S.flying){
-        if (hitCircle(px, py, heartBtnPos())) deployWings();
+        // generöst: hela enhörningen räknas som hjärtknapp
+        if (hitCircle(px, py, heartBtnPos()) || Math.hypot(px - S.ux, py - S.uy) < unit() * 1.9) deployWings();
+        else if (friendAt(px, py)){ friendAt(px, py).cheer = 1; tickle(px, py); }
         else S.wiggleT = 0.6;                     // ledtråd: hjärtat vickar
-      } else { S.tx = px; S.ty = py; }
+      } else {
+        const f = friendAt(px, py); if (f){ f.cheer = 1; tickle(px, py); }
+        S.tx = px; S.ty = py;
+      }
       break;
     case 'space':
       if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); return; }
@@ -1135,9 +1273,13 @@ function onDown(px, py){
         sndTap(); S.level = loadLevel(); go('sky'); return;
       }
       if (!S.flying){
-        if (hitCircle(px, py, heartBtnPos())) deployWings();
+        if (hitCircle(px, py, heartBtnPos()) || Math.hypot(px - S.ux, py - S.uy) < unit() * 1.9) deployWings();
+        else if (friendAt(px, py)){ friendAt(px, py).cheer = 1; tickle(px, py); }
         else S.wiggleT = 0.6;
-      } else { S.tx = px; S.ty = py; }
+      } else {
+        const f = friendAt(px, py); if (f){ f.cheer = 1; tickle(px, py); }
+        S.tx = px; S.ty = py;
+      }
       break;
   }
 }
