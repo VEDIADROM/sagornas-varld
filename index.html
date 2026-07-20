@@ -48,7 +48,7 @@
    SAGORNAS VÄRLD — ett sagospel för barn
    Fas 1: Himlen  – hitta 6 fåglar
    Fas 2: Rymden  – samla 10 stjärnor
-   Fas 3: Marken  – hoppa förbi snälla zombisar
+   Fas 3: Marken  – hoppa förbi jätteläskiga zombisar
    ============================================================ */
 
 const CV = document.getElementById('c');
@@ -671,13 +671,13 @@ function drawFriend(f){
     drawUnicorn(x, gy - unit()*0.62 - hop, unit()*0.5, { face: x > S.ux ? -1 : 1, happy: f.cheer > 0 });
   }
 }
-/* fem sorters snälla zombisar */
+/* fem sorters jätteläskiga men blodfria zombisar */
 const ZK = {
-  norm:  { body:'#47643f', head:'#587a50', belly:'#78946c', leg:'#344d31', mouth:'#231522', eye:'#ffd54f', scale:1,    tall:1,    hat:'bowler', say:'Buuu!' },
-  lang:  { body:'#315d61', head:'#417879', belly:'#629897', leg:'#25484c', mouth:'#142d35', eye:'#80ffff', scale:0.95, tall:1.45, hat:'topp',   say:'Grrr!' },
-  bebis: { body:'#60753e', head:'#78934d', belly:'#9caf70', leg:'#455a2d', mouth:'#291a25', eye:'#eeff41', scale:0.62, tall:1,    hat:'party',  say:'Raa!' },
-  somn:  { body:'#59466f', head:'#705987', belly:'#8e79a2', leg:'#433454', mouth:'#25172f', eye:'#e1bee7', scale:1.05, tall:1,    hat:'natt',   say:'Vem där?!', sleepy:true },
-  disco: { body:'#86491f', head:'#a9612d', belly:'#c47f48', leg:'#653517', mouth:'#321321', eye:'#ff5c9d', scale:0.95, tall:1,    hat:'disco',  say:'Dansa!', dance:true },
+  norm:  { body:'#202e23', head:'#2b3b2e', belly:'#405143', leg:'#101914', mouth:'#09050b', eye:'#ff3b30', scale:1.06, tall:1,    hat:'bowler', say:'JAG SER DIG!' },
+  lang:  { body:'#14282d', head:'#1d363a', belly:'#345156', leg:'#0b181c', mouth:'#050b10', eye:'#45f6ff', scale:1,    tall:1.5,  hat:'topp',   say:'GRAAAH!' },
+  bebis: { body:'#29351d', head:'#364525', belly:'#4d5c38', leg:'#151d0e', mouth:'#0b070d', eye:'#d9ff3f', scale:0.68, tall:1,    hat:'party',  say:'ROOOAR!' },
+  somn:  { body:'#2d2038', head:'#3b2a49', belly:'#554263', leg:'#170f20', mouth:'#09050e', eye:'#cf77ff', scale:1.1,  tall:1,    hat:'natt',   say:'VEM GÅR DÄR?!', sleepy:true },
+  disco: { body:'#3b1d19', head:'#4c2820', belly:'#674034', leg:'#21100c', mouth:'#0d0508', eye:'#ff3d8d', scale:1,    tall:1,    hat:'disco',  say:'DANSAAAA!', dance:true },
 };
 function drawHatShape(style, s){
   // ritas med basen kring y=0, centrerad i x
@@ -703,17 +703,31 @@ function drawHatShape(style, s){
 }
 function drawZombie(z, sx, u){
   const K = z.k || ZK.norm;
-  const zu = u * 0.85 * K.scale, gy = groundY(), th = K.tall || 1;
+  const zu = u * 0.96 * K.scale, gy = groundY(), th = K.tall || 1;
   const t = z.hit ? S.time - z.hitT : 0;
   const bt = S.time - (z.boingT || -9);
   const awake = z.hit || bt < 2.5;                       // sömnig vaknar en stund efter studs
   const cy = (1.1 - 0.88 * th) * zu;                     // kroppens mitt (fötterna fasta)
   const hy = (1.1 - 1.76 * th) * zu - 0.09 * zu;         // huvudets mitt
   const hr2 = 0.55 * zu * (K.scale < 0.8 ? 1.12 : 1);    // bebisar har stort huvud
-  // tung skugga gör dem tydligt kusligare utan att använda våld eller blod
-  ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#190f24';
-  ell(sx, gy - 2, zu * 0.9, zu * 0.18); ctx.restore();
+  // svartlila dimma, krypande skuggor och lätt darrning ger en hotfull silhuett utan blod
+  ctx.save();
+  const auraY = gy - zu * (1.08 + th * 0.48);
+  const aura = ctx.createRadialGradient(sx, auraY, zu*0.08, sx, auraY, zu*1.7);
+  aura.addColorStop(0, 'rgba(64,10,72,.52)'); aura.addColorStop(0.48, 'rgba(29,5,38,.3)'); aura.addColorStop(1, 'rgba(10,3,17,0)');
+  ctx.fillStyle = aura; circle(sx, auraY, zu*1.7);
+  if (!gentleMotion && !z.hit){
+    ctx.fillStyle = '#29102f'; ctx.globalAlpha = 0.2;
+    for (let i = 0; i < 3; i++){
+      const drift = Math.sin(S.time*(0.7+i*0.18) + z.seed + i) * zu*0.35;
+      ell(sx + drift, gy - zu*(0.45 + i*0.58), zu*(0.34-i*0.05), zu*0.22);
+    }
+  }
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = 0.48; ctx.fillStyle = '#0b0710';
+  ell(sx, gy - 2, zu * 1.04, zu * 0.22); ctx.restore();
   ctx.save(); ctx.translate(sx, gy - zu * 1.1);
+  if (!gentleMotion && !z.hit) ctx.translate(Math.sin(S.time*18 + z.seed) * zu*0.018, 0);
   if (bt < 0.35){ const k = 1 - bt/0.35; ctx.scale(1 + 0.25*k, 1 - 0.3*k); ctx.translate(0, zu*0.3*k); }  // glad studsmatta-squash
   if (z.hit) ctx.rotate(z.tipDir * clamp(t * 2.2, 0, 1) * 1.15);
   else if (K.dance) ctx.rotate(Math.sin(S.time * 5 + z.seed) * 0.15);
@@ -722,9 +736,22 @@ function drawZombie(z, sx, u){
   // ben
   ctx.fillStyle = K.leg;
   rr(-0.45*zu, 0.7*zu, 0.32*zu, 0.42*zu, 0.13*zu); rr(0.13*zu, 0.7*zu, 0.32*zu, 0.42*zu, 0.13*zu);
+  ctx.fillStyle = '#c7b883';
+  for (const side of [-1, 1]){
+    const footX = side < 0 ? -0.38*zu : 0.38*zu;
+    ctx.beginPath(); ctx.moveTo(footX-side*0.13*zu, 1.08*zu); ctx.lineTo(footX+side*0.2*zu, 1.08*zu); ctx.lineTo(footX+side*0.08*zu, 0.94*zu); ctx.closePath(); ctx.fill();
+  }
   // kropp + mage
   ctx.fillStyle = K.body; ell(0, cy, 0.8*zu*(th > 1 ? 0.85 : 1), 0.88*zu*th);
+  ctx.strokeStyle = '#0d1010'; ctx.lineWidth = 0.1*zu;
+  ctx.beginPath(); ctx.ellipse(0, cy, 0.8*zu*(th > 1 ? 0.85 : 1), 0.88*zu*th, 0, 0, TAU); ctx.stroke();
   ctx.fillStyle = K.belly; ell(0, cy + 0.23*zu, 0.5*zu, 0.5*zu);
+  // taggig rygg och trasig silhuett
+  ctx.fillStyle = '#111819';
+  for (const side of [-1, 1]){
+    ctx.beginPath(); ctx.moveTo(side*0.55*zu, cy-0.55*zu); ctx.lineTo(side*1.02*zu, cy-0.5*zu); ctx.lineTo(side*0.7*zu, cy-0.16*zu); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(side*0.67*zu, cy+0.02*zu); ctx.lineTo(side*1.04*zu, cy+0.16*zu); ctx.lineTo(side*0.66*zu, cy+0.34*zu); ctx.closePath(); ctx.fill();
+  }
   // armar (disco viftar i luften)
   ctx.fillStyle = K.body;
   if (K.dance){
@@ -734,15 +761,31 @@ function drawZombie(z, sx, u){
     ell(-0.72*zu*(th > 1 ? 0.85 : 1), cy - 0.12*zu, 0.3*zu, 0.16*zu, 0.5);
     ell(0.72*zu*(th > 1 ? 0.85 : 1), cy - 0.12*zu, 0.3*zu, 0.16*zu, -0.5);
   }
-  // huvud med svag övernaturlig glöd
+  // långa klor längst ut på armarna
+  ctx.strokeStyle = '#d4c58d'; ctx.lineWidth = 0.055*zu; ctx.lineCap = 'round';
+  for (const side of [-1, 1]){
+    const clawX = side*0.92*zu, clawY = K.dance ? cy-0.68*zu : cy-0.02*zu;
+    for (let i = -1; i <= 1; i++){
+      ctx.beginPath(); ctx.moveTo(clawX, clawY+i*0.08*zu); ctx.lineTo(clawX+side*(0.2+Math.abs(i)*0.03)*zu, clawY+(i*0.12+0.04)*zu); ctx.stroke();
+    }
+  }
+  // huvud med stark övernaturlig glöd och nästan svart kontur
   ctx.save();
-  ctx.shadowColor = K.eye; ctx.shadowBlur = gentleMotion ? 3 : 10;
-  ctx.fillStyle = K.head; circle(0, hy, hr2);
+  ctx.shadowColor = K.eye; ctx.shadowBlur = gentleMotion ? 5 : 18;
+  ctx.fillStyle = K.head; ctx.strokeStyle = '#0b0710'; ctx.lineWidth = 0.11*zu;
+  ctx.beginPath(); ctx.arc(0, hy, hr2, 0, TAU); ctx.fill(); ctx.stroke();
   ctx.restore();
-  // krokiga horn
-  ctx.fillStyle = '#d8c18b';
-  ctx.beginPath(); ctx.moveTo(-0.34*zu, hy-0.34*zu); ctx.lineTo(-0.55*zu, hy-0.78*zu); ctx.lineTo(-0.08*zu, hy-0.45*zu); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(0.34*zu, hy-0.34*zu); ctx.lineTo(0.55*zu, hy-0.78*zu); ctx.lineTo(0.08*zu, hy-0.45*zu); ctx.closePath(); ctx.fill();
+  // långa, krokiga horn och trasiga öron
+  ctx.fillStyle = '#b9a46f'; ctx.strokeStyle = '#211323'; ctx.lineWidth = 0.07*zu; ctx.lineJoin = 'round';
+  for (const side of [-1, 1]){
+    ctx.beginPath();
+    ctx.moveTo(side*0.28*zu, hy-0.37*zu); ctx.lineTo(side*0.52*zu, hy-0.98*zu);
+    ctx.lineTo(side*0.7*zu, hy-0.7*zu); ctx.lineTo(side*0.47*zu, hy-0.82*zu);
+    ctx.lineTo(side*0.05*zu, hy-0.43*zu); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = K.head;
+    ctx.beginPath(); ctx.moveTo(side*0.42*zu, hy-0.05*zu); ctx.lineTo(side*0.78*zu, hy-0.3*zu); ctx.lineTo(side*0.62*zu, hy+0.12*zu); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#b9a46f';
+  }
   // ögon
   if (z.hit){
     ctx.fillStyle = '#fff'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
@@ -755,33 +798,38 @@ function drawZombie(z, sx, u){
     ctx.moveTo(0.35*zu, hy - 0.05*zu); ctx.arc(0.22*zu, hy - 0.05*zu, 0.13*zu, 0.15, Math.PI - 0.15);
     ctx.stroke();
   } else {
-    ctx.save(); ctx.shadowColor = K.eye; ctx.shadowBlur = gentleMotion ? 3 : 12;
-    ctx.fillStyle = '#f4f0d4'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
+    ctx.save(); ctx.shadowColor = K.eye; ctx.shadowBlur = gentleMotion ? 6 : 22;
+    ctx.fillStyle = '#efe8cf'; ell(-0.21*zu, hy - 0.09*zu, 0.22*zu, 0.19*zu); ell(0.23*zu, hy - 0.06*zu, 0.18*zu, 0.16*zu);
     ctx.fillStyle = K.eye;
-    const look = Math.sin(S.time * 1.5 + z.seed) * 0.05 * zu;
-    circle(-0.2*zu + look, hy - 0.08*zu, 0.08*zu); circle(0.22*zu + look, hy - 0.06*zu, 0.06*zu);
-    ctx.fillStyle = '#170e1b'; circle(-0.2*zu + look, hy - 0.08*zu, 0.035*zu); circle(0.22*zu + look, hy - 0.06*zu, 0.028*zu);
+    const look = Math.sin(S.time * 1.7 + z.seed) * 0.045 * zu;
+    ell(-0.21*zu + look, hy - 0.07*zu, 0.1*zu, 0.12*zu); ell(0.23*zu + look, hy - 0.05*zu, 0.08*zu, 0.1*zu);
+    ctx.fillStyle = '#08040a';
+    ell(-0.21*zu + look, hy - 0.07*zu, 0.027*zu, 0.09*zu); ell(0.23*zu + look, hy - 0.05*zu, 0.023*zu, 0.075*zu);
     ctx.restore();
-    // arga ögonbryn
-    ctx.strokeStyle = '#211525'; ctx.lineWidth = 0.09*zu; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(-0.4*zu, hy-0.31*zu); ctx.lineTo(-0.08*zu, hy-0.2*zu);
-    ctx.moveTo(0.08*zu, hy-0.2*zu); ctx.lineTo(0.4*zu, hy-0.31*zu); ctx.stroke();
+    // tunga V-formade ögonbryn
+    ctx.strokeStyle = '#0a060c'; ctx.lineWidth = 0.13*zu; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-0.46*zu, hy-0.35*zu); ctx.lineTo(-0.06*zu, hy-0.18*zu);
+    ctx.moveTo(0.06*zu, hy-0.18*zu); ctx.lineTo(0.46*zu, hy-0.35*zu); ctx.stroke();
   }
-  // mun (sömnig: liten snark-mun, övriga: mörk gapande mun med små tänder)
+  // näsborrar och stor gapande mun med två rader ojämna tänder
+  ctx.fillStyle = '#100a13'; ell(-0.08*zu, hy+0.09*zu, 0.035*zu, 0.025*zu); ell(0.08*zu, hy+0.09*zu, 0.035*zu, 0.025*zu);
   if (K.sleepy && !awake){
     ctx.strokeStyle = K.mouth; ctx.lineWidth = 0.06*zu; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(0.02*zu, hy + 0.22*zu, 0.07*zu, 0, TAU); ctx.stroke();
   } else {
-    ctx.fillStyle = K.mouth; ell(0, hy + 0.23*zu, 0.25*zu, 0.16*zu);
+    ctx.fillStyle = K.mouth; ctx.strokeStyle = '#050306'; ctx.lineWidth = 0.06*zu;
+    ctx.beginPath(); ctx.ellipse(0, hy + 0.27*zu, 0.36*zu, 0.25*zu, 0, 0, TAU); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fff8dc';
-    for (let i = -1; i <= 1; i += 2){
-      ctx.beginPath(); ctx.moveTo(i*0.17*zu, hy+0.11*zu); ctx.lineTo(i*0.04*zu, hy+0.11*zu); ctx.lineTo(i*0.1*zu, hy+0.23*zu); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(i*0.16*zu, hy+0.34*zu); ctx.lineTo(i*0.03*zu, hy+0.34*zu); ctx.lineTo(i*0.1*zu, hy+0.24*zu); ctx.closePath(); ctx.fill();
+    for (let i = -2; i <= 2; i++){
+      const toothX = i*0.125*zu;
+      ctx.beginPath(); ctx.moveTo(toothX-0.055*zu, hy+0.07*zu); ctx.lineTo(toothX+0.055*zu, hy+0.07*zu); ctx.lineTo(toothX+0.018*zu, hy+0.24*zu+(i%2)*0.025*zu); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(toothX-0.055*zu, hy+0.47*zu); ctx.lineTo(toothX+0.055*zu, hy+0.47*zu); ctx.lineTo(toothX-0.015*zu, hy+0.3*zu-(i%2)*0.025*zu); ctx.closePath(); ctx.fill();
     }
   }
-  // sydd kind
-  ctx.strokeStyle = '#2a1b2c'; ctx.lineWidth = 0.035*zu;
-  ctx.beginPath(); ctx.moveTo(0.3*zu, hy+0.06*zu); ctx.lineTo(0.48*zu, hy+0.18*zu);
+  // djupa ansiktssprickor och sydd kind
+  ctx.strokeStyle = '#100916'; ctx.lineWidth = 0.045*zu; ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.moveTo(-0.38*zu, hy-0.02*zu); ctx.lineTo(-0.49*zu, hy+0.12*zu); ctx.lineTo(-0.38*zu, hy+0.17*zu); ctx.lineTo(-0.5*zu, hy+0.31*zu);
+  ctx.moveTo(0.3*zu, hy+0.02*zu); ctx.lineTo(0.48*zu, hy+0.18*zu);
   ctx.moveTo(0.35*zu, hy+0.08*zu); ctx.lineTo(0.31*zu, hy+0.15*zu);
   ctx.moveTo(0.42*zu, hy+0.12*zu); ctx.lineTo(0.38*zu, hy+0.2*zu); ctx.stroke();
   ctx.restore();
