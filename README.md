@@ -4,7 +4,9 @@ Ett sagospel för barn (5–9 år), designat av en 6-åring. Hjälp den lilla en
 
 1. **Himlen** ☁️ — tryck på hjärtat så vingarna fälls ut, flyg och hitta 6 fåglar
 2. **Rymden** 🌟 — flyg upp till rymden och samla 10 stjärnor
-3. **Marken** 🧟 — hoppa och studsa förbi fåniga, snälla zombisar hela vägen till slottet!
+3. **Marken** 🧟 — hoppa och studsa förbi kusliga men fortfarande snälla zombisar hela vägen till slottet!
+
+Den lilla enhörningen bär sin kungliga krona under hela äventyret.
 
 **Spela här:** https://vediadrom.github.io/sagornas-varld/
 

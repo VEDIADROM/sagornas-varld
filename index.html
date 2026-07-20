@@ -506,7 +506,7 @@ function drawUnicorn(x, y, u, o){
   if (o.hats && o.hats.length){
     o.hats.slice(0, 8).forEach((style, i) => {
       ctx.save();
-      ctx.translate(0.85*u + Math.sin(S.time*2.5 + i) * 0.03*u*i, (-1.62 - i*0.3)*u);
+      ctx.translate(0.85*u + Math.sin(S.time*2.5 + i) * 0.03*u*i, (-1.92 - i*0.3)*u);
       ctx.rotate(Math.sin(S.time*2 + i) * 0.07);
       drawHatShape(style, u * 0.55);
       ctx.restore();
@@ -673,11 +673,11 @@ function drawFriend(f){
 }
 /* fem sorters snälla zombisar */
 const ZK = {
-  norm:  { body:'#8fd08f', head:'#9ad89a', belly:'#b5e3a8', leg:'#79b96d', mouth:'#4c7a44', scale:1,    tall:1,    hat:'bowler', say:'Hoppsan!' },
-  lang:  { body:'#80cbc4', head:'#93d6cf', belly:'#b2e6e0', leg:'#66b2a8', mouth:'#3e7d76', scale:0.95, tall:1.45, hat:'topp',   say:'Oj!' },
-  bebis: { body:'#aed581', head:'#c2e59a', belly:'#dcedc8', leg:'#94c165', mouth:'#6a8f3f', scale:0.62, tall:1,    hat:'party',  say:'Hihi!' },
-  somn:  { body:'#b39ddb', head:'#c5b3e3', belly:'#d9cdee', leg:'#9c86c9', mouth:'#5e35b1', scale:1.05, tall:1,    hat:'natt',   say:'Va?!',  sleepy:true },
-  disco: { body:'#ffb74d', head:'#ffc97a', belly:'#ffe0b2', leg:'#f09a2f', mouth:'#b26a00', scale:0.95, tall:1,    hat:'disco',  say:'Wiii!', dance:true },
+  norm:  { body:'#47643f', head:'#587a50', belly:'#78946c', leg:'#344d31', mouth:'#231522', eye:'#ffd54f', scale:1,    tall:1,    hat:'bowler', say:'Buuu!' },
+  lang:  { body:'#315d61', head:'#417879', belly:'#629897', leg:'#25484c', mouth:'#142d35', eye:'#80ffff', scale:0.95, tall:1.45, hat:'topp',   say:'Grrr!' },
+  bebis: { body:'#60753e', head:'#78934d', belly:'#9caf70', leg:'#455a2d', mouth:'#291a25', eye:'#eeff41', scale:0.62, tall:1,    hat:'party',  say:'Raa!' },
+  somn:  { body:'#59466f', head:'#705987', belly:'#8e79a2', leg:'#433454', mouth:'#25172f', eye:'#e1bee7', scale:1.05, tall:1,    hat:'natt',   say:'Vem där?!', sleepy:true },
+  disco: { body:'#86491f', head:'#a9612d', belly:'#c47f48', leg:'#653517', mouth:'#321321', eye:'#ff5c9d', scale:0.95, tall:1,    hat:'disco',  say:'Dansa!', dance:true },
 };
 function drawHatShape(style, s){
   // ritas med basen kring y=0, centrerad i x
@@ -710,6 +710,9 @@ function drawZombie(z, sx, u){
   const cy = (1.1 - 0.88 * th) * zu;                     // kroppens mitt (fötterna fasta)
   const hy = (1.1 - 1.76 * th) * zu - 0.09 * zu;         // huvudets mitt
   const hr2 = 0.55 * zu * (K.scale < 0.8 ? 1.12 : 1);    // bebisar har stort huvud
+  // tung skugga gör dem tydligt kusligare utan att använda våld eller blod
+  ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#190f24';
+  ell(sx, gy - 2, zu * 0.9, zu * 0.18); ctx.restore();
   ctx.save(); ctx.translate(sx, gy - zu * 1.1);
   if (bt < 0.35){ const k = 1 - bt/0.35; ctx.scale(1 + 0.25*k, 1 - 0.3*k); ctx.translate(0, zu*0.3*k); }  // glad studsmatta-squash
   if (z.hit) ctx.rotate(z.tipDir * clamp(t * 2.2, 0, 1) * 1.15);
@@ -731,8 +734,15 @@ function drawZombie(z, sx, u){
     ell(-0.72*zu*(th > 1 ? 0.85 : 1), cy - 0.12*zu, 0.3*zu, 0.16*zu, 0.5);
     ell(0.72*zu*(th > 1 ? 0.85 : 1), cy - 0.12*zu, 0.3*zu, 0.16*zu, -0.5);
   }
-  // huvud
+  // huvud med svag övernaturlig glöd
+  ctx.save();
+  ctx.shadowColor = K.eye; ctx.shadowBlur = gentleMotion ? 3 : 10;
   ctx.fillStyle = K.head; circle(0, hy, hr2);
+  ctx.restore();
+  // krokiga horn
+  ctx.fillStyle = '#d8c18b';
+  ctx.beginPath(); ctx.moveTo(-0.34*zu, hy-0.34*zu); ctx.lineTo(-0.55*zu, hy-0.78*zu); ctx.lineTo(-0.08*zu, hy-0.45*zu); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0.34*zu, hy-0.34*zu); ctx.lineTo(0.55*zu, hy-0.78*zu); ctx.lineTo(0.08*zu, hy-0.45*zu); ctx.closePath(); ctx.fill();
   // ögon
   if (z.hit){
     ctx.fillStyle = '#fff'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
@@ -745,18 +755,35 @@ function drawZombie(z, sx, u){
     ctx.moveTo(0.35*zu, hy - 0.05*zu); ctx.arc(0.22*zu, hy - 0.05*zu, 0.13*zu, 0.15, Math.PI - 0.15);
     ctx.stroke();
   } else {
-    ctx.fillStyle = '#fff'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
-    ctx.fillStyle = '#333';
+    ctx.save(); ctx.shadowColor = K.eye; ctx.shadowBlur = gentleMotion ? 3 : 12;
+    ctx.fillStyle = '#f4f0d4'; circle(-0.2*zu, hy - 0.1*zu, 0.19*zu); circle(0.22*zu, hy - 0.07*zu, 0.14*zu);
+    ctx.fillStyle = K.eye;
     const look = Math.sin(S.time * 1.5 + z.seed) * 0.05 * zu;
     circle(-0.2*zu + look, hy - 0.08*zu, 0.08*zu); circle(0.22*zu + look, hy - 0.06*zu, 0.06*zu);
+    ctx.fillStyle = '#170e1b'; circle(-0.2*zu + look, hy - 0.08*zu, 0.035*zu); circle(0.22*zu + look, hy - 0.06*zu, 0.028*zu);
+    ctx.restore();
+    // arga ögonbryn
+    ctx.strokeStyle = '#211525'; ctx.lineWidth = 0.09*zu; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-0.4*zu, hy-0.31*zu); ctx.lineTo(-0.08*zu, hy-0.2*zu);
+    ctx.moveTo(0.08*zu, hy-0.2*zu); ctx.lineTo(0.4*zu, hy-0.31*zu); ctx.stroke();
   }
-  // mun (sömnig: liten snark-mun)
-  ctx.strokeStyle = K.mouth; ctx.lineWidth = 0.06*zu; ctx.lineCap = 'round';
+  // mun (sömnig: liten snark-mun, övriga: mörk gapande mun med små tänder)
   if (K.sleepy && !awake){
+    ctx.strokeStyle = K.mouth; ctx.lineWidth = 0.06*zu; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(0.02*zu, hy + 0.22*zu, 0.07*zu, 0, TAU); ctx.stroke();
   } else {
-    ctx.beginPath(); ctx.arc(0, hy + 0.17*zu, 0.22*zu, 0.4, Math.PI - 0.4); ctx.stroke();
+    ctx.fillStyle = K.mouth; ell(0, hy + 0.23*zu, 0.25*zu, 0.16*zu);
+    ctx.fillStyle = '#fff8dc';
+    for (let i = -1; i <= 1; i += 2){
+      ctx.beginPath(); ctx.moveTo(i*0.17*zu, hy+0.11*zu); ctx.lineTo(i*0.04*zu, hy+0.11*zu); ctx.lineTo(i*0.1*zu, hy+0.23*zu); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(i*0.16*zu, hy+0.34*zu); ctx.lineTo(i*0.03*zu, hy+0.34*zu); ctx.lineTo(i*0.1*zu, hy+0.24*zu); ctx.closePath(); ctx.fill();
+    }
   }
+  // sydd kind
+  ctx.strokeStyle = '#2a1b2c'; ctx.lineWidth = 0.035*zu;
+  ctx.beginPath(); ctx.moveTo(0.3*zu, hy+0.06*zu); ctx.lineTo(0.48*zu, hy+0.18*zu);
+  ctx.moveTo(0.35*zu, hy+0.08*zu); ctx.lineTo(0.31*zu, hy+0.15*zu);
+  ctx.moveTo(0.42*zu, hy+0.12*zu); ctx.lineTo(0.38*zu, hy+0.2*zu); ctx.stroke();
   ctx.restore();
   // Zzz som svävar upp från den sovande
   if (K.sleepy && !awake && !z.hit){
@@ -1256,7 +1283,7 @@ function drawUnicornWorld(o){
   const blink = S.blinkT < 0;
   drawUnicorn(S.ux, S.uy, unit(), Object.assign({
     face: S.face, wings: S.wings, flap: S.flap,
-    blink, happy: S.happyT > 0, mane: playerMane(),
+    blink, happy: S.happyT > 0, mane: playerMane(), crown: true,
   }, o || {}));
 }
 function drawSkyScene(withBirds){
@@ -1331,7 +1358,7 @@ function render(){
       drawSkyScene(false);
       const bob = Math.sin(S.time * 2) * 6;
       drawUnicorn(w * 0.75, standY() + bob * 0.2, unit() * 1.2,
-        { face: -1, blink: S.blinkT < 0, happy: S.happyT > 0 || Math.sin(S.time) > 0, mane: playerMane() });
+        { face: -1, blink: S.blinkT < 0, happy: S.happyT > 0 || Math.sin(S.time) > 0, mane: playerMane(), crown: true });
       drawPalette();
       const titleSize = clamp(Math.min(w,h) * 0.085, 30, 72);
       txt('Sagornas värld', w/2, h * 0.2, titleSize, '#ff5c9d', '#ffffff');
@@ -1429,7 +1456,7 @@ function render(){
           face: 1, wings: S.grounded ? 0.35 : 1, flap: S.flap,
           run: S.grounded ? S.runT : null,
           blink: S.blinkT < 0, happy: S.happyT > 0, sx: sxq, sy: syq,
-          slime: 10 - S.hearts, hats: S.hats, mane: playerMane(),
+          slime: 10 - S.hearts, hats: S.hats, mane: playerMane(), crown: true,
         });
       }
       drawParticles();
@@ -1484,7 +1511,7 @@ function render(){
   if (S.paused){
     ctx.fillStyle = 'rgba(20,30,60,.55)'; ctx.fillRect(0, 0, w, h);
     drawUnicorn(w/2, h * 0.18, unit() * 0.95,        // förhandsvisning som byter färg direkt
-      { face: 1, happy: true, wings: 0.6, flap: S.time * 3, mane: playerMane() });
+      { face: 1, happy: true, wings: 0.6, flap: S.time * 3, mane: playerMane(), crown: true });
     const rb = resumeBtn(); drawArrowBtn(rb.x, rb.y, rb.r, 'Fortsätt');
     drawIconBtn(homeBtn(), '🏠', '#42a5f5', 'Hem');
     drawIconBtn(restartBtn(), '🔄', '#ff9f43', 'Börja om');
