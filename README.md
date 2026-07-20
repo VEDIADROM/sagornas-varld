@@ -4,7 +4,8 @@ Ett sagospel för barn (5–9 år), designat av en 6-åring. Hjälp den lilla en
 
 1. **Himlen** ☁️ — tryck på hjärtat så vingarna fälls ut, flyg och hitta 6 fåglar
 2. **Rymden** 🌟 — flyg upp till rymden och samla 10 stjärnor
-3. **Marken** 🧟 — hoppa och studsa förbi jätteläskiga, glödögda men blodfria zombisar hela vägen till slottet!
+3. **Marken** 🧟 — hoppa och studsa förbi jätteläskiga, glödögda men blodfria zombisar hela vägen till slottet
+4. **Slutbossen Fred** 🫧 — skjut en enda snäll bubbla som befriar monstret och förvandlar Fred till en snäll prinsessa!
 
 Den lilla enhörningen bär sin kungliga krona under hela äventyret.
 Manen kan målas i sju färgval, inklusive en regnbågsfärgad man som följer med genom hela spelet.
@@ -14,11 +15,14 @@ Har enhörningen fått slejm på sig väntar ett badkar och en tvål på vinstsk
 
 Funkar på mobil, surfplatta och dator. Animerade händer visar hur varje del fungerar utan
 att barnet behöver kunna läsa. Dra eller använd piltangenterna för att flyga; tryck på
-skärmen eller använd mellanslag för att hoppa.
+skärmen eller använd mellanslag för att hoppa. Vid Fred stannar banan automatiskt; tryck på den
+stora bubbelknappen eller använd mellanslag/Enter för att skjuta den snälla bubblan.
 
 Spelet har också en lugn flygtur direkt från start, ett läge med mindre rörelse, barnvänlig
 hjälp som aktiveras automatiskt när något känns svårt samt tillgängliga tangentbords- och
 skärmläsarkontroller.
+Fred-flödet har en stor mobilvänlig knapp, en bildbaserad coach, skärmläsarannonsering och en
+egen dold HTML-kontroll. Förvandlingen använder färre och lugnare effekter när mindre rörelse är valt.
 
 ## Installera som app 📱
 

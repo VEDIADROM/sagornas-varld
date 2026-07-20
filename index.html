@@ -32,7 +32,7 @@
 <body>
 <canvas id="c" role="application" tabindex="0" aria-describedby="gameHelp"
   aria-label="Sagornas värld. Tryck Starta spelet och följ de animerade händerna."></canvas>
-<p id="gameHelp" class="sr-only">Barnspel. Använd piltangenterna för att flyga och mellanslag för att hoppa.</p>
+<p id="gameHelp" class="sr-only">Barnspel. Använd piltangenterna för att flyga, mellanslag för att hoppa och mellanslag eller Enter för att skjuta en snäll bubbla på slutbossen Fred.</p>
 <div aria-label="Spelkontroller">
   <button id="a11yStart" class="a11y-action" type="button">Starta spelet</button>
   <button id="a11yPause" class="a11y-action" type="button">Pausa eller fortsätt</button>
@@ -41,6 +41,7 @@
   <button id="a11yCalm" class="a11y-action" type="button">Lugn flygtur</button>
   <button id="a11yComfort" class="a11y-action" type="button">Mindre rörelse</button>
   <button id="a11yWash" class="a11y-action" type="button">Tvätta bort slejmet med tvål</button>
+  <button id="a11yBubble" class="a11y-action" type="button">Skjut en snäll bubbla på Fred</button>
 </div>
 <p id="gameStatus" class="sr-only" aria-live="polite"></p>
 <script>
@@ -73,6 +74,7 @@ function resize(){
     const g = window.G, rotated = (oldW > oldH) !== (w > h);
     g.ux = g.ux / oldW * w; g.tx = g.tx / oldW * w;
     g.uy = g.uy / oldH * h; g.ty = g.ty / oldH * h;
+    if (g.bossBubble) g.bossBubble.startY = g.bossBubble.startY / oldH * h;
     g.ux = clamp(g.ux, SAFE.l + unit()*1.4, w - SAFE.r - unit()*1.4);
     g.tx = clamp(g.tx, SAFE.l + unit()*1.4, w - SAFE.r - unit()*1.4);
     if ((g.phase === 'sky' || g.phase === 'calm') && !g.flying) g.uy = g.ty = standY();
@@ -154,6 +156,8 @@ const sndGiggle = () => { tone(700,.07,'sine',.12); tone(920,.07,'sine',.12,.08)
 const sndBoing  = () => tone(240, .25, 'sine', .15, 0, 480);
 const sndPop    = n  => tone(420 + Math.min(n,8)*70, .07, 'sine', .13);
 const sndWash   = () => { tone(460,.12,'sine',.09); tone(620,.15,'sine',.09,.1,180); tone(840,.2,'sine',.08,.22,220); };
+const sndBubbleShot = () => { tone(380,.18,'sine',.1,0,340); tone(620,.16,'sine',.08,.1,300); };
+const sndTransform = () => { [392,523,659,784,1047].forEach((f,i)=>tone(f,.28,'triangle',.12,i*.13)); };
 
 /* mjuk bakgrundsmusik per fas (mycket låg volym) */
 let musicTimer = null, nextNote = 0, noteIx = 0;
@@ -202,6 +206,8 @@ const S = {
   idleT: 0, coyoteT: 0, jumpBufferT: 0, misses: 0, assist: 0, rescued: false,
   checkpointShown: false, activePointer: null,
   washT: 0, washed: false, washStartSlime: 0,
+  fred: { active:false, shot:false, transformed:false, transformT:0 },
+  bossBubble: null,
 };
 /* manfärger — "måla din enhörning" */
 const MANES = [
@@ -320,6 +326,8 @@ function go(phase){
     S.coyoteT = 0; S.jumpBufferT = 0; S.misses = 0; S.assist = 0;
     S.rescued = false; S.checkpointShown = false;
     S.washT = 0; S.washed = false; S.washStartSlime = 0;
+    S.fred.active = false; S.fred.shot = false; S.fred.transformed = false; S.fred.transformT = 0;
+    S.bossBubble = null;
     makeClouds();
     announce('Vägen till slottet. Tryck för att hoppa. Tryck en gång till i luften för dubbelhopp.');
   }
@@ -834,6 +842,146 @@ function drawZombie(z, sx, u){
   }
 }
 
+/* ---------------- slutbossen Fred ---------------- */
+function fredPos(){
+  return { x: clamp(w * 0.74, w * 0.6, w - SAFE.r - unit() * 1.65), y: groundY() };
+}
+function fredStop(){ return S.courseLen - 0.72; }
+function bubbleBtn(){
+  const r = clamp(Math.min(w, h) * 0.09, 46, 66);
+  return { x: w - SAFE.r - r - 14, y: h - SAFE.b - r - 14, r };
+}
+function drawFredMonster(x, gy, u, alpha){
+  ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
+  const auraY = gy - u * 2.25;
+  const aura = ctx.createRadialGradient(x, auraY, u*.15, x, auraY, u*2.5);
+  aura.addColorStop(0, 'rgba(102,32,122,.48)'); aura.addColorStop(1, 'rgba(38,8,54,0)');
+  ctx.fillStyle = aura; circle(x, auraY, u*2.5);
+  ctx.save(); ctx.translate(x, gy);
+  if (!gentleMotion) ctx.translate(Math.sin(S.time*2.4)*u*.025, 0);
+  ctx.fillStyle = 'rgba(18,8,24,.35)'; ell(0, -u*.05, u*1.42, u*.28);
+  ctx.fillStyle = '#352044';
+  rr(-u*.83, -u*.75, u*.58, u*.82, u*.22); rr(u*.25, -u*.75, u*.58, u*.82, u*.22);
+  ctx.fillStyle = '#523264'; ell(0, -u*1.6, u*1.34, u*1.55);
+  ctx.fillStyle = '#754a86'; ell(0, -u*1.45, u*.78, u*.88);
+  // stora men mjuka taggar och armar – läskigt utan våld eller blod
+  ctx.fillStyle = '#2a1837';
+  for (const side of [-1,1]){
+    ctx.beginPath(); ctx.moveTo(side*u*.9,-u*2.45); ctx.lineTo(side*u*1.6,-u*2.05); ctx.lineTo(side*u*1.05,-u*1.7); ctx.closePath(); ctx.fill();
+    ell(side*u*1.12, -u*1.55, u*.58, u*.25, side*.32);
+  }
+  ctx.fillStyle = '#5b376d'; ctx.strokeStyle = '#21102b'; ctx.lineWidth = u*.1;
+  ctx.beginPath(); ctx.arc(0, -u*3.02, u*1.02, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#d5bd7c';
+  for (const side of [-1,1]){
+    ctx.beginPath(); ctx.moveTo(side*u*.42,-u*3.72); ctx.lineTo(side*u*.92,-u*4.42); ctx.lineTo(side*u*1.02,-u*3.48); ctx.closePath(); ctx.fill();
+  }
+  ctx.save(); ctx.shadowColor = '#ef6cff'; ctx.shadowBlur = gentleMotion ? 4 : 15;
+  ctx.fillStyle = '#fff4d8'; ell(-u*.36,-u*3.14,u*.25,u*.2); ell(u*.36,-u*3.14,u*.25,u*.2);
+  ctx.fillStyle = '#ef6cff'; circle(-u*.34,-u*3.12,u*.105); circle(u*.34,-u*3.12,u*.105); ctx.restore();
+  ctx.strokeStyle = '#21102b'; ctx.lineWidth = u*.11; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-u*.66,-u*3.48); ctx.lineTo(-u*.13,-u*3.3); ctx.moveTo(u*.13,-u*3.3); ctx.lineTo(u*.66,-u*3.48); ctx.stroke();
+  ctx.fillStyle = '#170b20'; ell(0,-u*2.68,u*.52,u*.32);
+  ctx.fillStyle = '#fff7dc';
+  for (const side of [-1,0,1]){
+    ctx.beginPath(); ctx.moveTo(side*u*.28-u*.11,-u*2.91); ctx.lineTo(side*u*.28+u*.11,-u*2.91); ctx.lineTo(side*u*.28,-u*2.67); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  txt('FRED', x, gy-u*4.72, Math.max(20,u*.62), '#5b246f', '#fff');
+  ctx.restore();
+}
+function drawFredPrincess(x, gy, u, alpha){
+  ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
+  if (!gentleMotion){
+    const arrived = clamp(S.fred.transformT / 1.05, 0, 1);
+    ctx.translate(0, -Math.sin(arrived*Math.PI)*u*.18);
+  }
+  drawPerson(x, gy, u/13, { dress:'#f48fb1', hair:'#6d3b67', longHair:true, cheer:gentleMotion ? 0 : 1, seed:2.4 });
+  ctx.fillStyle = '#ff6fae';
+  heartPath(x-u*.9, gy-u*2.65, u*.22); ctx.fill();
+  heartPath(x+u*.9, gy-u*3.2, u*.17); ctx.fill();
+  ctx.restore();
+  if (alpha > .35) txt('Prinsessan Fred', x, gy-u*4.72, Math.max(18,u*.5), '#ad1457', '#fff');
+}
+function drawFred(){
+  if (!S.fred.active) return;
+  const p = fredPos(), k = S.fred.transformed ? clamp(S.fred.transformT / 1.05, 0, 1) : 0;
+  if (k < 1) drawFredMonster(p.x, p.y, unit(), 1-k);
+  if (k > 0) drawFredPrincess(p.x, p.y, unit(), k);
+}
+function drawBossBubble(){
+  if (!S.bossBubble) return;
+  const target = fredPos(), t = clamp(S.bossBubble.t, 0, 1), ease = t*t*(3-2*t);
+  const x = lerp(w*.26 + unit(), target.x, ease);
+  const y = lerp(S.bossBubble.startY, target.y-unit()*2.7, ease) - Math.sin(t*Math.PI)*unit()*.65;
+  const r = unit() * (.42 + Math.sin(t*Math.PI)*.1);
+  ctx.save(); ctx.shadowColor = '#80deea'; ctx.shadowBlur = gentleMotion ? 3 : 13;
+  ctx.fillStyle = 'rgba(210,249,255,.72)'; ctx.strokeStyle = '#56c9e6'; ctx.lineWidth = Math.max(2,r*.1);
+  circle(x,y,r); ctx.stroke();
+  ctx.fillStyle = '#fff'; circle(x-r*.28,y-r*.3,r*.17);
+  ctx.fillStyle = '#ff5c9d'; heartPath(x,y+r*.05,r*.34); ctx.fill(); ctx.restore();
+}
+function drawBubbleButton(){
+  if (!S.fred.active || S.fred.shot) return;
+  const b = bubbleBtn(), pulse = gentleMotion ? 1 : 1 + Math.sin(S.time*4)*.035;
+  ctx.save(); ctx.translate(b.x,b.y); ctx.scale(pulse,pulse);
+  ctx.shadowColor = 'rgba(20,89,130,.3)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+  ctx.fillStyle = '#31b8df'; circle(0,0,b.r); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.fillStyle = 'rgba(226,252,255,.9)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+  circle(0,0,b.r*.52); ctx.stroke();
+  ctx.fillStyle = '#fff'; circle(-b.r*.18,-b.r*.2,b.r*.12);
+  ctx.fillStyle = '#ff4f91'; heartPath(0,b.r*.06,b.r*.24); ctx.fill(); ctx.restore();
+  txt('SNÄLL BUBBLA', b.x, b.y-b.r*1.28, Math.max(14,b.r*.33), '#126c88', '#fff');
+}
+function drawBossCoach(){
+  if (!S.fred.active || S.fred.shot) return;
+  const b = bubbleBtn(), f = fredPos(), t = gentleMotion ? .5 : (S.time*.45)%1;
+  ctx.save(); ctx.globalAlpha = .78; ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.setLineDash([8,11]); ctx.beginPath(); ctx.moveTo(b.x,b.y-b.r*.45);
+  ctx.quadraticCurveTo(w*.58,h*.45,f.x,f.y-unit()*2.7); ctx.stroke(); ctx.setLineDash([]);
+  const pulse = gentleMotion ? 1 : 1+Math.sin(S.time*4)*.08;
+  ctx.strokeStyle = '#75e8ff'; ctx.lineWidth = 4; circleStroke(b.x,b.y,b.r*1.13*pulse);
+  const bx = lerp(b.x,f.x,t), by = lerp(b.y-b.r*.45,f.y-unit()*2.7,t)-Math.sin(t*Math.PI)*unit();
+  ctx.fillStyle = 'rgba(222,252,255,.92)'; circle(bx,by,unit()*.22);
+  ctx.font = Math.round(unit()*.8) + 'px "Segoe UI Emoji",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('👆', b.x-b.r*.58, b.y+b.r*.72); ctx.restore();
+}
+function magicBurst(x,y){
+  const n = gentleMotion ? 10 : 34;
+  for (let i=0;i<n;i++){
+    const a=rnd()*TAU, sp=gentleMotion ? 35+rnd()*55 : 70+rnd()*230;
+    S.particles.push({ x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-80,c:i%2?'#ff70b7':'#80deea',
+      r:3+rnd()*4,t:0,life:.8+rnd()*.7,star:i%3===0,heart:i%4===0 });
+  }
+}
+function fireBossBubble(){
+  if (S.paused || S.phase !== 'ground' || !S.fred.active || S.fred.shot || S.fred.transformed) return;
+  S.fred.shot = true; S.bossBubble = { t:0, startY:S.uy-unit()*.35 };
+  sndBubbleShot(); buzz(18); announce('Den snälla bubblan flyger mot Fred.'); syncA11y();
+}
+function startFredBattle(){
+  if (S.fred.active) return;
+  S.fred.active = true; S.p = fredStop(); S.banner = 'FRED'; S.bannerT = 1.1;
+  S.vy = 0; S.uy = standY(); S.grounded = true; S.jumps = 0;
+  sndAlmost(); buzz([25,45,25]);
+  announce('Slutbossen Fred blockerar slottet. Skjut exakt en snäll bubbla för att hjälpa honom.');
+  syncA11y();
+}
+function updateFred(dt){
+  if (!S.fred.active) return;
+  if (S.bossBubble){
+    S.bossBubble.t += dt / .78;
+    if (S.bossBubble.t >= 1){
+      S.bossBubble = null; S.fred.transformed = true; S.fred.transformT = 0;
+      const p=fredPos(); sndTransform(); buzz([25,35,70]); magicBurst(p.x,p.y-unit()*2.6);
+      announce('Bubblan befriade Fred! Monstret förvandlas till den snälla prinsessan Fred.');
+    }
+  } else if (S.fred.transformed){
+    S.fred.transformT += dt;
+    if (S.fred.transformT >= 2.55) go('win');
+  }
+}
+
 /* ---------------- segerbad ---------------- */
 function bathLayout(){
   const u = unit(), gy = groundY();
@@ -1012,7 +1160,7 @@ function drawProgress(){
   ctx.fillStyle = '#dddef0'; rr(x1 - 7, y - 15, 14, 15, 2);
   ctx.fillStyle = '#f06292';
   ctx.beginPath(); ctx.moveTo(x1 - 10, y - 15); ctx.lineTo(x1 + 10, y - 15); ctx.lineTo(x1, y - 26); ctx.closePath(); ctx.fill();
-  const fx = x0 + (x1 - x0) * clamp(S.p / (S.courseLen - 0.55), 0, 1);
+  const fx = x0 + (x1 - x0) * clamp(S.p / fredStop(), 0, 1);
   ctx.fillStyle = '#ffffff'; circle(fx, y, 7);
   ctx.fillStyle = '#f2b90c';
   ctx.beginPath(); ctx.moveTo(fx - 2, y - 5); ctx.lineTo(fx + 2, y - 5); ctx.lineTo(fx, y - 13); ctx.closePath(); ctx.fill();
@@ -1094,6 +1242,8 @@ function drawCoach(){
     if (S.birdsFound === 0 || S.idleT > 6){ const p = nearestBirdPos(); if (p) drawDragCoach(S.ux,S.uy,p.x,p.y); }
   } else if (S.phase === 'space' && (S.starsFound === 0 || S.idleT > 6)){
     const p = nearestStarPos(); if (p) drawDragCoach(S.ux,S.uy,p.x,p.y);
+  } else if (S.phase === 'ground' && S.fred.active){
+    drawBossCoach();
   } else if (S.phase === 'ground' && (S.bannerT > 0 || S.p < 1.15 || S.assist)){
     drawJumpGuide(); drawTapCoach(w*.78, h*.67);
   }
@@ -1238,7 +1388,7 @@ function update(dt){
       break;
     }
     case 'ground': {
-      if (S.bannerT <= 0){
+      if (S.bannerT <= 0 && !S.fred.active){
         const baseSpd = S.level === 1 ? 0.185 : S.level === 2 ? 0.2 : 0.22;
         const spd = baseSpd * (S.assist ? 0.78 : 1);   // hjälpvingar sänker tempot diskret
         S.p += spd * dt;
@@ -1273,6 +1423,7 @@ function update(dt){
       // zombisar
       const heroX = w * 0.26;
       for (const z of S.zombies){
+        if (S.fred.active) break;                  // bossmötet är en trygg bubbelscen utan nya krockar
         const off = z.pace && !z.hit ? Math.sin(S.time * z.spd + z.seed) * z.range : 0;
         const sx = (z.wx + off - S.p) * w + heroX;
         const K = z.k || ZK.norm;
@@ -1312,7 +1463,8 @@ function update(dt){
           }
         }
       }
-      if (S.phase === 'ground' && S.p >= S.courseLen - 0.55) go('win');
+      if (!S.fred.active && S.p >= fredStop()) startFredBattle();
+      updateFred(dt);
       break;
     }
     case 'win': {
@@ -1534,6 +1686,7 @@ function render(){
         const sx = (z.wx + off - S.p) * w + heroX;
         if (sx > -unit()*3 && sx < w + unit()*3) drawZombie(z, sx, unit());
       }
+      drawFred();
       const flash = !gentleMotion && S.invulnT > 0 && Math.floor(S.time * 4) % 2 === 0;
       if (!flash || S.phase === 'lose'){
         let sxq = 1, syq = 1;
@@ -1541,17 +1694,19 @@ function render(){
         if (S.landT > 0){ const k = S.landT / 0.14; syq = 1 - 0.16*k; sxq = 1 + 0.14*k; }  // trycks ihop vid landning
         drawUnicorn(heroX, S.uy + (syq < 1 ? unit()*(1-syq)*1.2 : 0), unit(), {
           face: 1, wings: S.grounded ? 0.35 : 1, flap: S.flap,
-          run: S.grounded ? S.runT : null,
+          run: S.grounded && !S.fred.active ? S.runT : null,
           blink: S.blinkT < 0, happy: S.happyT > 0, sx: sxq, sy: syq,
           slime: 10 - S.hearts, mane: playerMane(), crown: true,
         });
       }
+      drawBossBubble();
       drawParticles();
       drawHeartHUD();
       if (S.phase === 'ground') drawProgress();
       if (S.phase === 'ground'){
         const pb = pauseBtn(); drawHandBtn(pb.x, pb.y, pb.r);
         drawCoach();
+        drawBubbleButton();
         if (S.bannerT > 0) txt(S.banner, w/2, h * 0.4, clamp(w*0.08, 30, 60), '#ff5c9d', '#fff');
       }
       if (S.phase === 'lose'){
@@ -1660,6 +1815,7 @@ function syncA11y(){
   document.getElementById('a11yHome').hidden = S.phase === 'menu';
   document.getElementById('a11yCalm').hidden = !['menu','win'].includes(S.phase);
   document.getElementById('a11yWash').hidden = !(S.phase === 'win' && S.washStartSlime > 0 && !S.washed && S.washT <= 0);
+  document.getElementById('a11yBubble').hidden = !(S.phase === 'ground' && !S.paused && S.fred.active && !S.fred.shot);
 }
 function onDown(px, py, pointerType){
   audioInit();
@@ -1714,7 +1870,11 @@ function onDown(px, py, pointerType){
       setFlyTarget(px, py, pointerType);
       break;
     case 'ground':
-      if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); return; }
+      if (hitCircle(px, py, pb)){ S.paused = true; sndTap(); syncA11y(); return; }
+      if (S.fred.active){
+        if (!S.fred.shot && hitCircle(px, py, bubbleBtn())) fireBossBubble();
+        return;
+      }
       S.bannerT = 0; jump();
       break;
     case 'lose':
@@ -1762,6 +1922,10 @@ function releasePointer(e){ if (e.pointerId === S.activePointer) S.activePointer
 CV.addEventListener('pointerup', releasePointer);
 CV.addEventListener('pointercancel', releasePointer);
 CV.addEventListener('lostpointercapture', releasePointer);
+function isInteractiveTarget(target){
+  return !!(target && typeof target.closest === 'function' &&
+    target.closest('button,a[href],input,select,textarea,summary,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="link"]'));
+}
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
   if (e.code === 'Escape' || e.code === 'KeyP'){
@@ -1782,10 +1946,14 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (e.code === 'Space' || e.code === 'Enter'){
+    if (isInteractiveTarget(e.target)) return;       // låt den fokuserade HTML-kontrollen sköta sin egen klickhändelse
     e.preventDefault(); audioInit();
-    if (S.paused){ S.paused = false; return; }
+    if (S.paused){ S.paused = false; syncA11y(); announce('Spelet fortsätter.'); return; }
     if (S.phase === 'menu') go('sky');
-    else if (S.phase === 'ground'){ S.bannerT = 0; jump(); }
+    else if (S.phase === 'ground'){
+      if (S.fred.active) fireBossBubble();
+      else { S.bannerT = 0; jump(); }
+    }
     else if (S.phase === 'lose') go('ground');
     else if (S.phase === 'win'){
       if (S.washStartSlime > 0 && !S.washed) startWash();
@@ -1814,6 +1982,7 @@ document.getElementById('a11yHome').addEventListener('click', () => go('menu'));
 document.getElementById('a11yCalm').addEventListener('click', () => { audioInit(); go('calm'); });
 document.getElementById('a11yComfort').addEventListener('click', toggleGentle);
 document.getElementById('a11yWash').addEventListener('click', () => { audioInit(); startWash(); });
+document.getElementById('a11yBubble').addEventListener('click', () => { audioInit(); fireBossBubble(); });
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden){
