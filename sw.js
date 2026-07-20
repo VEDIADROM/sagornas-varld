@@ -1,5 +1,5 @@
 /* Sagornas värld — service worker: spelet funkar offline */
-const CACHE = 'sagornas-varld-v8';
+const CACHE = 'sagornas-varld-v9';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

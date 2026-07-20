@@ -40,6 +40,7 @@
   <button id="a11yHome" class="a11y-action" type="button">Till startsidan</button>
   <button id="a11yCalm" class="a11y-action" type="button">Lugn flygtur</button>
   <button id="a11yComfort" class="a11y-action" type="button">Mindre rörelse</button>
+  <button id="a11yWash" class="a11y-action" type="button">Tvätta bort slejmet med tvål</button>
 </div>
 <p id="gameStatus" class="sr-only" aria-live="polite"></p>
 <script>
@@ -152,6 +153,7 @@ const sndLand   = () => tone(420, .16, 'sine', .06, 0, -220);
 const sndGiggle = () => { tone(700,.07,'sine',.12); tone(920,.07,'sine',.12,.08); tone(780,.1,'sine',.12,.16,180); };
 const sndBoing  = () => tone(240, .25, 'sine', .15, 0, 480);
 const sndPop    = n  => tone(420 + Math.min(n,8)*70, .07, 'sine', .13);
+const sndWash   = () => { tone(460,.12,'sine',.09); tone(620,.15,'sine',.09,.1,180); tone(840,.2,'sine',.08,.22,220); };
 
 /* mjuk bakgrundsmusik per fas (mycket låg volym) */
 let musicTimer = null, nextNote = 0, noteIx = 0;
@@ -199,6 +201,7 @@ const S = {
   bubbles: [], bubbleT: 3, popChain: 0, popT: -9,
   idleT: 0, coyoteT: 0, jumpBufferT: 0, misses: 0, assist: 0, rescued: false,
   checkpointShown: false, activePointer: null,
+  washT: 0, washed: false, washStartSlime: 0,
 };
 /* manfärger — "måla din enhörning" */
 const MANES = [
@@ -312,13 +315,18 @@ function go(phase){
     S.uy = standY(); S.banner = 'Hoppa!'; S.bannerT = 1.6;
     S.coyoteT = 0; S.jumpBufferT = 0; S.misses = 0; S.assist = 0;
     S.rescued = false; S.checkpointShown = false;
+    S.washT = 0; S.washed = false; S.washStartSlime = 0;
     makeClouds();
     announce('Vägen till slottet. Tryck för att hoppa. Tryck en gång till i luften för dubbelhopp.');
   }
   if (phase === 'win'){
     sndWin(); buzz([60, 60, 140]); S.winConfT = 0;
+    S.washT = 0; S.washStartSlime = Math.max(0, 10 - S.hearts);
+    S.washed = S.washStartSlime === 0;
     store.set('sagovarld_level', String(S.level + 1));
-    announce('Hurra! Du klarade sagan. Välj nästa nivå eller en lugn flygtur.');
+    announce(S.washStartSlime > 0
+      ? 'Hurra! Du klarade sagan. Tryck på tvålen för att tvätta bort slejmet i badkaret.'
+      : 'Hurra! Du klarade sagan. Välj nästa nivå eller en lugn flygtur.');
   }
   if (phase === 'lose'){ sndAlmost(); announce('Nästan! Prova igen när du vill.'); }
   syncA11y();
@@ -820,6 +828,76 @@ function drawZombie(z, sx, u){
   }
 }
 
+/* ---------------- segerbad ---------------- */
+function bathLayout(){
+  const u = unit(), gy = groundY();
+  return { x:w/2, rimY:gy-u*0.62, bottomY:gy+2, w:u*4.15, h:u*0.92, u };
+}
+function soapBtn(){
+  const b = bathLayout(), r = clamp(b.u*0.48, 24, 38);
+  return { x:b.x+b.w*0.48, y:b.rimY-b.u*1.18, r };
+}
+function remainingWinSlime(){
+  if (S.washed || S.washStartSlime <= 0) return 0;
+  if (S.washT > 0) return Math.ceil(S.washStartSlime * clamp(S.washT / 1.8, 0, 1));
+  return S.washStartSlime;
+}
+function startWash(){
+  if (S.phase !== 'win' || S.washStartSlime <= 0 || S.washed || S.washT > 0) return;
+  S.washT = 1.8; S.happyT = 2; sndWash(); buzz([18,35,18]);
+  announce('Tvättar bort slejmet med tvål och bubblor.');
+  syncA11y();
+}
+function drawBathBack(b){
+  ctx.save();
+  ctx.fillStyle = '#7bc9eb';
+  ctx.beginPath(); ctx.ellipse(b.x, b.rimY, b.w*0.5, b.h*0.26, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#dff7ff';
+  ctx.beginPath(); ctx.ellipse(b.x, b.rimY, b.w*0.44, b.h*0.18, 0, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+function drawBathFront(b){
+  ctx.save();
+  const grad = ctx.createLinearGradient(0, b.rimY, 0, b.bottomY);
+  grad.addColorStop(0, '#dff7ff'); grad.addColorStop(1, '#8ed6ef');
+  ctx.fillStyle = grad; ctx.strokeStyle = '#56afd5'; ctx.lineWidth = Math.max(2, b.u*0.06);
+  ctx.beginPath();
+  ctx.moveTo(b.x-b.w*0.5, b.rimY); ctx.quadraticCurveTo(b.x-b.w*0.46, b.bottomY, b.x-b.w*0.34, b.bottomY);
+  ctx.lineTo(b.x+b.w*0.34, b.bottomY); ctx.quadraticCurveTo(b.x+b.w*0.46, b.bottomY, b.x+b.w*0.5, b.rimY);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#f4fcff'; rr(b.x-b.w*0.53, b.rimY-b.u*0.09, b.w*1.06, b.u*0.2, b.u*0.1);
+  ctx.fillStyle = '#5aaed0';
+  rr(b.x-b.w*0.34, b.bottomY-b.u*0.03, b.u*0.24, b.u*0.19, b.u*0.07);
+  rr(b.x+b.w*0.34-b.u*0.24, b.bottomY-b.u*0.03, b.u*0.24, b.u*0.19, b.u*0.07);
+  ctx.restore();
+}
+function drawWashBubbles(b){
+  const washing = S.washT > 0, n = washing ? 16 : 7;
+  ctx.save();
+  for (let i = 0; i < n; i++){
+    const a = i*2.39 + S.time*(washing && !gentleMotion ? 1.6 : 0.18);
+    const spread = b.w*(0.1 + (i%5)*0.075);
+    const bx = b.x + Math.sin(a)*spread;
+    const by = b.rimY - b.u*(0.08 + (i%4)*0.22) - (washing ? Math.abs(Math.cos(a))*b.u*0.22 : 0);
+    const br = b.u*(0.1 + (i%3)*0.045);
+    ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.strokeStyle = 'rgba(91,184,222,.8)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawSoap(){
+  const b = bathLayout(), sb = soapBtn(), washing = S.washT > 0;
+  const sx = washing ? b.x + Math.sin(S.time*9)*b.u*0.62 : sb.x;
+  const sy = washing ? b.rimY-b.u*(1.24+Math.abs(Math.cos(S.time*7))*0.24) : sb.y;
+  ctx.save(); ctx.translate(sx, sy); ctx.rotate(washing ? Math.sin(S.time*8)*0.28 : -0.16);
+  ctx.shadowColor = 'rgba(47,92,140,.3)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = '#b39ddb'; rr(-sb.r*0.9, -sb.r*0.58, sb.r*1.8, sb.r*1.16, sb.r*0.38);
+  ctx.shadowBlur = 0; ctx.fillStyle = '#d8c9f2'; rr(-sb.r*0.62, -sb.r*0.35, sb.r*1.24, sb.r*0.3, sb.r*0.14);
+  ctx.fillStyle = '#fff'; circle(sb.r*0.72, -sb.r*0.62, sb.r*0.2); circle(sb.r*0.96, -sb.r*0.9, sb.r*0.12);
+  ctx.restore();
+  if (!washing) txt('Tvål', sb.x, sb.y+sb.r*1.25, Math.max(14, sb.r*0.52), '#5e35b1', '#fff');
+}
+
 /* ---------------- knappar ---------------- */
 function btnR(){ return clamp(Math.min(w, h) * 0.085, 40, 64); }
 function playBtn(){ return { x: w/2, y: h * 0.62, r: btnR() * 1.25 }; }
@@ -1233,6 +1311,15 @@ function update(dt){
     }
     case 'win': {
       S.winConfT += dt;
+      if (S.washT > 0){
+        S.washT = Math.max(0, S.washT - dt);
+        if (S.washT === 0){
+          S.washed = true; S.happyT = 1.6; sndStar(); buzz([20,35,70]);
+          confetti(w/2, groundY()-unit()*1.3, 34);
+          announce('Skinande ren! Allt slejm är borttvättat.');
+          syncA11y();
+        }
+      }
       if (S.winConfT > (gentleMotion ? 0.9 : 0.25)){
         S.winConfT = 0; confetti(rnd() * w, -10, 5);
         if (!gentleMotion && rnd() < 0.3) confetti(w * (0.15 + rnd() * 0.7), h * (0.12 + rnd() * 0.3), 32);  // fyrverkeri
@@ -1477,10 +1564,21 @@ function render(){
       drawCastle(w/2, gy, Math.min(w, h) / 520 + 0.4);
       ctx.fillStyle = '#5c5f66'; ctx.fillRect(0, gy, w, h - gy);
       for (const f of S.friends){ f.cheer = 1; drawFriend(f); }                     // kompisarna jublar
-      drawUnicorn(w/2, gy - unit() * 1.3, unit() * 1.25, {
-        face: 1, crown: true, happy: true, wings: 0.5, flap: S.time * 2,
-        mane: playerMane(),
-      });
+      const needsBath = S.washStartSlime > 0;
+      if (needsBath){
+        const bath = bathLayout(); drawBathBack(bath);
+        drawUnicorn(w/2, gy - unit() * 1.3, unit() * 1.12, {
+          face: 1, crown: true, happy: S.washed || S.washT > 0, wings: 0.45, flap: S.time * 2,
+          slime: remainingWinSlime(), mane: playerMane(),
+        });
+        drawWashBubbles(bath); drawBathFront(bath);
+        if (!S.washed) drawSoap();
+      } else {
+        drawUnicorn(w/2, gy - unit() * 1.3, unit() * 1.25, {
+          face: 1, crown: true, happy: true, wings: 0.5, flap: S.time * 2,
+          mane: playerMane(),
+        });
+      }
       // samlade stjärnor
       const s = clamp(w / 30, 10, 20), gap = s * 2.5, x0 = w/2 - gap * 4.5;
       for (let i = 0; i < 10; i++){
@@ -1489,6 +1587,10 @@ function render(){
         ctx.strokeStyle = '#ffb300'; ctx.lineWidth = 2; ctx.stroke();
       }
       txt('Hurra!', w/2, h * 0.08, clamp(w*0.07, 28, 54), '#ff5c9d', '#fff');
+      if (needsBath){
+        txt(S.washed ? 'Skinande ren!' : (S.washT > 0 ? 'Skrubba, skrubba!' : 'Tryck på tvålen!'),
+          w/2, h * 0.29, clamp(w*0.038, 18, 31), S.washed ? '#2e9d68' : '#5e35b1', '#fff');
+      }
       drawParticles();
       const nb = winNextBtn(); drawArrowBtn(nb.x, nb.y, nb.r, 'Nästa nivå');
       // lugnt läge-knapp (rosa moln med hjärta)
@@ -1543,6 +1645,7 @@ function syncA11y(){
   document.getElementById('a11yPause').hidden = !active;
   document.getElementById('a11yHome').hidden = S.phase === 'menu';
   document.getElementById('a11yCalm').hidden = !['menu','win'].includes(S.phase);
+  document.getElementById('a11yWash').hidden = !(S.phase === 'win' && S.washStartSlime > 0 && !S.washed && S.washT <= 0);
 }
 function onDown(px, py, pointerType){
   audioInit();
@@ -1603,7 +1706,9 @@ function onDown(px, py, pointerType){
       if (hitCircle(px, py, { x: w/2, y: h * 0.62, r: btnR() * 1.3 })){ sndTap(); go('ground'); }
       break;
     case 'win':
-      if (hitCircle(px, py, winNextBtn())){
+      if (S.washStartSlime > 0 && !S.washed && S.washT <= 0 && hitCircle(px, py, soapBtn())){
+        startWash();
+      } else if (hitCircle(px, py, winNextBtn())){
         sndTap(); S.level = loadLevel(); go('sky');
       } else if (hitCircle(px, py, calmBtn())){ sndTap(); go('calm'); }
       break;
@@ -1667,7 +1772,10 @@ window.addEventListener('keydown', e => {
     if (S.phase === 'menu') go('sky');
     else if (S.phase === 'ground'){ S.bannerT = 0; jump(); }
     else if (S.phase === 'lose') go('ground');
-    else if (S.phase === 'win'){ S.level = loadLevel(); go('sky'); }
+    else if (S.phase === 'win'){
+      if (S.washStartSlime > 0 && !S.washed) startWash();
+      else { S.level = loadLevel(); go('sky'); }
+    }
     else if ((S.phase === 'sky' || S.phase === 'calm') && !S.flying) deployWings();
   }
 });
@@ -1690,6 +1798,7 @@ document.getElementById('a11yMute').addEventListener('click', toggleMute);
 document.getElementById('a11yHome').addEventListener('click', () => go('menu'));
 document.getElementById('a11yCalm').addEventListener('click', () => { audioInit(); go('calm'); });
 document.getElementById('a11yComfort').addEventListener('click', toggleGentle);
+document.getElementById('a11yWash').addEventListener('click', () => { audioInit(); startWash(); });
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden){

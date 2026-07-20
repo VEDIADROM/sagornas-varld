@@ -1,5 +1,10 @@
 # Codex-arbetsregler
 
+## Publicering
+
+- Efter en verifierad implementation ska alla ändringar som hör till uppgiften committas och pushas till den aktuella branchen, om användaren inte uttryckligen säger att de inte ska pushas.
+- Lägg aldrig till eller pusha orelaterade ändringar.
+
 ## Modellrekommendation
 
 - Inled varje implementation med en kort modellrekommendation och motivering.

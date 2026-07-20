@@ -7,6 +7,7 @@ Ett sagospel för barn (5–9 år), designat av en 6-åring. Hjälp den lilla en
 3. **Marken** 🧟 — hoppa och studsa förbi jätteläskiga, glödögda men blodfria zombisar hela vägen till slottet!
 
 Den lilla enhörningen bär sin kungliga krona under hela äventyret.
+Har enhörningen fått slejm på sig väntar ett badkar och en tvål på vinstskärmen så att den kan bli skinande ren.
 
 **Spela här:** https://vediadrom.github.io/sagornas-varld/
 
